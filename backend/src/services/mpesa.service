@@ -1,0 +1,246 @@
+// backend/src/services/mpesa.service.js
+const axios = require('axios');
+const pool = require('../config/database');
+
+class MpesaService {
+  constructor() {
+    this.consumerKey = process.env.MPESA_CONSUMER_KEY;
+    this.consumerSecret = process.env.MPESA_CONSUMER_SECRET;
+    this.passkey = process.env.MPESA_PASSKEY;
+    this.shortcode = process.env.MPESA_SHORTCODE || '174379';
+    this.callbackUrl = process.env.MPESA_CALLBACK_URL;
+    this.environment = process.env.MPESA_ENVIRONMENT || 'sandbox';
+    
+    this.baseUrl = this.environment === 'production'
+      ? 'https://api.safaricom.co.ke'
+      : 'https://sandbox.safaricom.co.ke';
+    
+    this.accessToken = null;
+    this.tokenExpiry = null;
+  }
+
+  async getAccessToken() {
+    try {
+      if (this.accessToken && this.tokenExpiry && Date.now() < this.tokenExpiry) {
+        return this.accessToken;
+      }
+
+      const auth = Buffer.from(`${this.consumerKey}:${this.consumerSecret}`).toString('base64');
+      
+      const response = await axios.get(
+        `${this.baseUrl}/oauth/v1/generate?grant_type=client_credentials`,
+        { headers: { Authorization: `Basic ${auth}` } }
+      );
+
+      this.accessToken = response.data.access_token;
+      this.tokenExpiry = Date.now() + (3500 * 1000);
+
+      console.log('✅ M-Pesa access token obtained');
+      return this.accessToken;
+    } catch (error) {
+      console.error('❌ M-Pesa auth error:', error.response?.data || error.message);
+      throw new Error('Failed to get M-Pesa access token');
+    }
+  }
+
+  async stkPush(phoneNumber, amount, accountReference, transactionDesc) {
+    try {
+      const token = await this.getAccessToken();
+      const timestamp = this.generateTimestamp();
+      const password = this.generatePassword(timestamp);
+      const formattedPhone = this.formatPhoneNumber(phoneNumber);
+
+      const payload = {
+        BusinessShortCode: this.shortcode,
+        Password: password,
+        Timestamp: timestamp,
+        TransactionType: 'CustomerPayBillOnline',
+        Amount: Math.ceil(amount),
+        PartyA: formattedPhone,
+        PartyB: this.shortcode,
+        PhoneNumber: formattedPhone,
+        CallBackURL: this.callbackUrl,
+        AccountReference: accountReference,
+        TransactionDesc: transactionDesc || 'KCA Foundation Donation'
+      };
+
+      console.log('📱 Initiating STK Push:', { phone: formattedPhone, amount: payload.Amount });
+
+      const response = await axios.post(
+        `${this.baseUrl}/mpesa/stkpush/v1/processrequest`,
+        payload,
+        { headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' } }
+      );
+
+      console.log('✅ STK Push initiated:', response.data);
+
+      return {
+        success: true,
+        checkoutRequestId: response.data.CheckoutRequestID,
+        merchantRequestId: response.data.MerchantRequestID,
+        responseCode: response.data.ResponseCode,
+        responseDescription: response.data.ResponseDescription,
+        customerMessage: response.data.CustomerMessage
+      };
+    } catch (error) {
+      console.error('❌ STK Push error:', error.response?.data || error.message);
+      return {
+        success: false,
+        error: error.response?.data?.errorMessage || 'Failed to initiate payment',
+        errorCode: error.response?.data?.errorCode
+      };
+    }
+  }
+
+  async handleCallback(callbackData) {
+    try {
+      console.log('📥 M-Pesa Callback received:', JSON.stringify(callbackData, null, 2));
+
+      const { Body } = callbackData;
+      const { stkCallback } = Body;
+      const { MerchantRequestID, CheckoutRequestID, ResultCode, ResultDesc } = stkCallback;
+
+      const isSuccess = ResultCode === 0;
+
+      if (!isSuccess) {
+        console.log(`❌ Payment failed: ${ResultDesc}`);
+        await this.updatePaymentStatus(CheckoutRequestID, 'failed', { resultCode: ResultCode, resultDesc: ResultDesc });
+        return { success: false, message: ResultDesc };
+      }
+
+      const metadata = {};
+      if (stkCallback.CallbackMetadata?.Item) {
+        stkCallback.CallbackMetadata.Item.forEach(item => {
+          metadata[item.Name] = item.Value;
+        });
+      }
+
+      const { Amount, MpesaReceiptNumber, TransactionDate, PhoneNumber } = metadata;
+
+      console.log('✅ Payment successful:', { amount: Amount, receipt: MpesaReceiptNumber, phone: PhoneNumber });
+
+      await this.confirmPayment(CheckoutRequestID, {
+        mpesaReceiptNumber: MpesaReceiptNumber,
+        amount: Amount,
+        phoneNumber: PhoneNumber,
+        transactionDate: TransactionDate,
+        merchantRequestId: MerchantRequestID,
+        resultDesc: ResultDesc
+      });
+
+      return { success: true, receipt: MpesaReceiptNumber };
+    } catch (error) {
+      console.error('❌ Callback handling error:', error);
+      throw error;
+    }
+  }
+
+  async updatePaymentStatus(checkoutRequestId, status, details = {}) {
+    const client = await pool.connect();
+    try {
+      const result = await client.query(
+        `UPDATE payments 
+         SET confirmation_status = $1, provider_response = provider_response || $2::jsonb, updated_at = CURRENT_TIMESTAMP
+         WHERE provider_reference = $3
+         RETURNING payment_id, donation_id`,
+        [status, JSON.stringify(details), checkoutRequestId]
+      );
+
+      if (result.rows.length === 0) {
+        console.warn('⚠️ Payment not found for checkout request:', checkoutRequestId);
+        return;
+      }
+
+      const { donation_id } = result.rows[0];
+      const donationStatus = status === 'confirmed' ? 'completed' : 'failed';
+      await client.query(
+        `UPDATE donations SET donation_status = $1, updated_at = CURRENT_TIMESTAMP WHERE donation_id = $2`,
+        [donationStatus, donation_id]
+      );
+
+      console.log(`✅ Payment status updated: ${status}`);
+    } catch (error) {
+      console.error('❌ Database update error:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  async confirmPayment(checkoutRequestId, paymentDetails) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      const paymentResult = await client.query(
+        `UPDATE payments 
+         SET confirmation_status = 'confirmed', provider_reference = $1, 
+             provider_response = provider_response || $2::jsonb,
+             reconciled = true, reconciled_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+         WHERE provider_reference = $3
+         RETURNING payment_id, donation_id, amount`,
+        [paymentDetails.mpesaReceiptNumber, JSON.stringify(paymentDetails), checkoutRequestId]
+      );
+
+      if (paymentResult.rows.length === 0) throw new Error('Payment record not found');
+
+      const { donation_id } = paymentResult.rows[0];
+
+      await client.query(
+        `UPDATE donations 
+         SET donation_status = 'completed', completed_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+         WHERE donation_id = $1`,
+        [donation_id]
+      );
+
+      const donationData = await client.query(
+        'SELECT user_id, amount FROM donations WHERE donation_id = $1',
+        [donation_id]
+      );
+
+      if (donationData.rows.length > 0) {
+        const { user_id, amount } = donationData.rows[0];
+        await client.query(
+          `INSERT INTO notifications (user_id, type, title, message)
+           VALUES ($1, 'donation_complete', 'Payment Successful', 
+                   'Your donation of KES ${amount} has been received. Thank you!')`,
+          [user_id]
+        );
+      }
+
+      await client.query('COMMIT');
+      console.log('✅ Payment confirmed and records updated');
+
+      return { success: true, donationId: donation_id };
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error('❌ Payment confirmation error:', error);
+      throw error;
+    } finally {
+      client.release();
+    }
+  }
+
+  generateTimestamp() {
+    const now = new Date();
+    return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}${String(now.getSeconds()).padStart(2, '0')}`;
+  }
+
+  generatePassword(timestamp) {
+    return Buffer.from(`${this.shortcode}${this.passkey}${timestamp}`).toString('base64');
+  }
+
+  formatPhoneNumber(phone) {
+    let cleaned = phone.replace(/[\s\-\+]/g, '');
+    if (cleaned.startsWith('0')) cleaned = '254' + cleaned.substring(1);
+    if (!cleaned.startsWith('254')) cleaned = '254' + cleaned;
+    return cleaned;
+  }
+
+  isValidKenyanPhone(phone) {
+    const formatted = this.formatPhoneNumber(phone);
+    return /^254[71]\d{8}$/.test(formatted);
+  }
+}
+
+module.exports = new MpesaService();
