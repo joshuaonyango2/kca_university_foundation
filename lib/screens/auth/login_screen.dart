@@ -59,7 +59,6 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    // Capture context-dependent objects BEFORE the async gap
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
 
@@ -292,8 +291,9 @@ class _LoginScreenState extends State<LoginScreen> {
                     Consumer<AuthProvider>(
                       builder: (context, authProvider, _) {
                         return OutlinedButton(
-                          onPressed:
-                          authProvider.isLoading ? null : _handleGoogleSignIn,
+                          onPressed: authProvider.isLoading
+                              ? null
+                              : _handleGoogleSignIn,
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             side: BorderSide(color: Colors.grey[350]!),
@@ -315,8 +315,6 @@ class _LoginScreenState extends State<LoginScreen> {
                               : Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              // Google 'G' logo drawn with coloured text
-                              // Replace with Image.asset if you have the SVG
                               const _GoogleIcon(),
                               const SizedBox(width: 12),
                               Text(
@@ -346,38 +344,41 @@ class _LoginScreenState extends State<LoginScreen> {
 
   // ── Logo widget ─────────────────────────────────────────────────────────────
   Widget _buildLogo() {
-    // ✅ TO USE YOUR ACTUAL LOGO:
-    // 1. Place logo PNG at: assets/images/kca_foundation_logo.png
-    // 2. Register in pubspec.yaml under flutter > assets:
-    //      assets:
-    //        - assets/images/kca_foundation_logo.png
-    // 3. Replace the Container below with:
-    //      Image.asset('assets/images/kca_foundation_logo.png', height: 100)
-    //
     return Container(
-      width: 100,
-      height: 100,
+      width: 110,
+      height: 110,
       decoration: BoxDecoration(
-        color: _KCA.navy,
+        color: _KCA.white,
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: _KCA.gold, width: 3),
         boxShadow: [
           BoxShadow(
-            color: _KCA.navy.withAlpha(76),
+            color: _KCA.navy.withAlpha(40),
             blurRadius: 20,
-            offset: const Offset(0, 10),
+            offset: const Offset(0, 8),
           ),
         ],
       ),
-      child: const Center(
-        child: Text(
-          'KCA',
-          style: TextStyle(
-            fontSize: 32,
-            fontWeight: FontWeight.bold,
-            color: _KCA.white,
-            letterSpacing: 1,
-          ),
+      padding: const EdgeInsets.all(8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: Image.asset(
+          'assets/icon/kca_logo.png',   // ✅ uses your existing asset
+          fit: BoxFit.contain,
+          // Shows "KCA" text if the image file is missing or fails to load
+          errorBuilder: (context, error, stackTrace) {
+            return const Center(
+              child: Text(
+                'KCA',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                  color: _KCA.navy,
+                  letterSpacing: 1,
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -416,30 +417,28 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-// ── Google 'G' icon (coloured text — no external asset needed) ───────────────
+// ── Google 'G' icon ───────────────────────────────────────────────────────────
 class _GoogleIcon extends StatelessWidget {
   const _GoogleIcon();
 
   @override
   Widget build(BuildContext context) {
+    // ✅ To use the real Google logo, add assets/images/google_logo.png
+    // and replace this widget with:
+    // return Image.asset('assets/images/google_logo.png', width: 22, height: 22);
     return const SizedBox(
       width: 22,
       height: 22,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Text(
-            'G',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF4285F4), // Google blue
-            ),
+      child: Center(
+        child: Text(
+          'G',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.bold,
+            color: Color(0xFF4285F4),
           ),
-        ],
+        ),
       ),
     );
-    // ✅ Replace with the real Google logo if you have the SVG/PNG asset:
-    return Image.asset('assets/images/google_logo.png', width: 22, height: 22);
   }
 }

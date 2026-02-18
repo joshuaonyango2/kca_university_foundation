@@ -7,9 +7,9 @@ import '../../providers/auth_provider.dart';
 
 // ── KCA Foundation brand tokens ──────────────────────────────────────────────
 class _KCA {
-  static const navy  = Color(0xFF1B2263); // Primary navy
-  static const gold  = Color(0xFFF5A800); // Foundation gold/yellow
-  static const white = Colors.white;
+  static const navy    = Color(0xFF1B2263);
+  static const gold    = Color(0xFFF5A800);
+  static const white   = Colors.white;
   static const lightBg = Color(0xFFF5F7FA);
 }
 // ─────────────────────────────────────────────────────────────────────────────
@@ -38,7 +38,6 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    // Capture context-dependent objects BEFORE the async gap
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
 
@@ -143,8 +142,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
 
                               // ── Gold accent line ────────────────────────
                               Padding(
-                                padding:
-                                const EdgeInsets.symmetric(vertical: 20),
+                                padding: const EdgeInsets.symmetric(vertical: 20),
                                 child: Container(
                                   height: 3,
                                   width: 56,
@@ -287,20 +285,13 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     );
   }
 
-  // ── Logo: swap Container for Image.asset once you add your PNG ─────────────
+  // ── Logo widget ─────────────────────────────────────────────────────────────
   Widget _buildLogo() {
-    // ✅ TO USE YOUR ACTUAL LOGO:
-    // 1. Place logo PNG at:  assets/images/kca_foundation_logo.png
-    // 2. Add to pubspec.yaml under flutter > assets
-    // 3. Replace the Container below with:
-    //
-    //    Image.asset('assets/images/kca_foundation_logo.png', height: 90)
-    //
     return Container(
-      width: 90,
-      height: 90,
+      width: 100,
+      height: 100,
       decoration: BoxDecoration(
-        color: _KCA.navy,
+        color: _KCA.white,
         shape: BoxShape.circle,
         border: Border.all(color: _KCA.gold, width: 3),
         boxShadow: [
@@ -311,10 +302,20 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
           ),
         ],
       ),
-      child: const Icon(
-        Icons.admin_panel_settings,
-        size: 44,
-        color: _KCA.white,
+      padding: const EdgeInsets.all(8),
+      child: ClipOval(
+        child: Image.asset(
+          'assets/icon/kca_logo.png',   // ✅ uses your existing asset
+          fit: BoxFit.contain,
+          // Fallback to admin icon if image fails to load
+          errorBuilder: (context, error, stackTrace) {
+            return const Icon(
+              Icons.admin_panel_settings,
+              size: 44,
+              color: _KCA.navy,
+            );
+          },
+        ),
       ),
     );
   }

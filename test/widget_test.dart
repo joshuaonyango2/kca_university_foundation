@@ -4,24 +4,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:mobile/main.dart';
+import 'package:kca_university_foundation/main.dart' as app;
 
 void main() {
   testWidgets('App loads successfully', (WidgetTester tester) async {
-    // Initialize SharedPreferences with mock values
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
 
-    // Build our app and trigger a frame
-    await tester.pumpWidget(MyApp(prefs: prefs));
+    // ✅ Fixed: use app.MyApp (matches the 'as app' import alias)
+    await tester.pumpWidget(app.MyApp(prefs: prefs));
 
-    // Verify that the splash screen loads
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
-    // Wait for navigation
     await tester.pumpAndSettle();
 
-    // Verify that we navigated to login screen (since user is not authenticated)
     expect(find.text('Welcome Back'), findsOneWidget);
   });
 
@@ -29,12 +25,12 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
 
-    await tester.pumpWidget(MyApp(prefs: prefs));
+    // ✅ Fixed: use app.MyApp
+    await tester.pumpWidget(app.MyApp(prefs: prefs));
     await tester.pumpAndSettle();
 
-    // Verify login screen elements
     expect(find.text('Welcome Back'), findsOneWidget);
-    expect(find.byType(TextField), findsNWidgets(2)); // Email and password fields
+    expect(find.byType(TextField), findsNWidgets(2));
     expect(find.text('Login'), findsOneWidget);
   });
 
@@ -42,15 +38,14 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
 
-    await tester.pumpWidget(MyApp(prefs: prefs));
+    // ✅ Fixed: use app.MyApp
+    await tester.pumpWidget(app.MyApp(prefs: prefs));
     await tester.pumpAndSettle();
 
-    // Find email field and enter text
     final emailField = find.byType(TextField).first;
     await tester.enterText(emailField, 'test@example.com');
     await tester.pump();
 
-    // Verify text was entered
     expect(find.text('test@example.com'), findsOneWidget);
   });
 }
