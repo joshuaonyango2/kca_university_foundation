@@ -1,4 +1,4 @@
-name: mobile
+name: kca_university_foundation
 description: KCA University Foundation Fundraising App
 publish_to: 'none'
 version: 1.0.0+1
@@ -10,12 +10,15 @@ dependencies:
   flutter:
     sdk: flutter
 
+  # Auth (Google Sign-In)
+  google_sign_in: ^6.2.1
+
   # State Management
   provider: ^6.1.1
 
   # HTTP & API
   http: ^1.1.0
-  dio: ^5.4.0  # Added for advanced HTTP (auth, payments, etc.)
+  dio: ^5.4.0
 
   # Local Storage
   shared_preferences: ^2.2.2
@@ -23,58 +26,53 @@ dependencies:
 
   # UI Components
   cached_network_image: ^3.3.0
-  flutter_spinkit: ^5.2.0  # Corrected name (no space)
-  data_table_2: ^2.5.0  # For admin tables (transactions, reports)
+  flutter_spinkit: ^5.2.0
+  data_table_2: ^2.5.0
 
   # Utilities
   intl: ^0.20.2
-  pdf: ^3.10.8  # For generating PDF receipts/reports
-  path_provider: ^2.1.3  # For saving PDFs to device
-  image_picker: ^1.0.7  # For photo uploads (beneficiaries, deposit slips)
+  pdf: ^3.10.8
+  path_provider: ^2.1.3
+  image_picker: ^1.0.7
 
   # Icons
   cupertino_icons: ^1.0.2
 
-  # Auth & DB (Firebase option; remove if using custom backend)
+  # Firebase
   firebase_core: ^3.4.0
   firebase_auth: ^5.3.0
-  cloud_firestore: ^5.4.0  # Corrected name
+  cloud_firestore: ^5.4.0
 
   # JSON Serialization
   json_annotation: ^4.9.0
 
   # Communications
-  flutter_email_sender: ^6.0.3  # For sending donor emails (use with backend for SMS)
+  flutter_email_sender: ^6.0.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^6.0.0
-  flutter_launcher_icons: ^0.14.4  # Latest stable as of Jan 2026
+  flutter_launcher_icons: ^0.14.4
 
   # Code Generation
   build_runner: ^2.4.8
   json_serializable: ^6.8.0
 
-# Flutter Launcher Icons config - MUST be at ROOT level (not under flutter:)
 flutter_launcher_icons:
-  android: "launcher_icon"                  # Custom name for Android icon files
+  android: "launcher_icon"
   ios: true
-  image_path: "assets/icon/kca_logo.png"    # Path to your logo (ensure file exists & is PNG, ideally 1024x1024 square)
-  min_sdk_android: 21                       # Safe default
-  # Recommended for modern Android adaptive icons
-  adaptive_icon_background: "#FFFFFF"       # Background color (white here; change to match your theme)
+  image_path: "assets/icon/kca_logo.png"
+  min_sdk_android: 21
+  adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: "assets/icon/kca_logo.png"
-  remove_alpha_ios: true  # Fixes alpha warning for iOS
-
-  # Add this for desktop (optional but recommended)
+  remove_alpha_ios: true
   desktop:
     windows: true
-    image_path: "assets/icon/kca_logo.png"  # Generates .ico for Windows
+    image_path: "assets/icon/kca_logo.png"
 
 flutter:
   uses-material-design: true
 
-  # Declare asset folders (required if you use images/logos in the app)
   assets:
     - assets/icon/

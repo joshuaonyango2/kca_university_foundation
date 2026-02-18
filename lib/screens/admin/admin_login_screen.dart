@@ -5,16 +5,25 @@ import 'package:provider/provider.dart';
 import '../../config/routes.dart';
 import '../../providers/auth_provider.dart';
 
+// ── KCA Foundation brand tokens ──────────────────────────────────────────────
+class _KCA {
+  static const navy  = Color(0xFF1B2263); // Primary navy
+  static const gold  = Color(0xFFF5A800); // Foundation gold/yellow
+  static const white = Colors.white;
+  static const lightBg = Color(0xFFF5F7FA);
+}
+// ─────────────────────────────────────────────────────────────────────────────
+
 class AdminLoginScreen extends StatefulWidget {
-  const AdminLoginScreen({Key? key}) : super(key: key);
+  const AdminLoginScreen({super.key});
 
   @override
   State<AdminLoginScreen> createState() => _AdminLoginScreenState();
 }
 
 class _AdminLoginScreenState extends State<AdminLoginScreen> {
-  final _formKey = GlobalKey<FormState>();
-  final _emailController = TextEditingController();
+  final _formKey            = GlobalKey<FormState>();
+  final _emailController    = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
 
@@ -29,6 +38,9 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
+    // Capture context-dependent objects BEFORE the async gap
+    final navigator = Navigator.of(context);
+    final messenger = ScaffoldMessenger.of(context);
 
     final success = await authProvider.login(
       email: _emailController.text.trim(),
@@ -38,13 +50,12 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
     if (!mounted) return;
 
     if (success) {
-      // Check if user is admin
       if (authProvider.user?.isAdmin ?? false) {
-        Navigator.pushReplacementNamed(context, AppRoutes.adminDashboard);
+        navigator.pushReplacementNamed(AppRoutes.adminDashboard);
       } else {
-        // Not an admin
         await authProvider.logout();
-        ScaffoldMessenger.of(context).showSnackBar(
+        if (!mounted) return;
+        messenger.showSnackBar(
           const SnackBar(
             content: Text('Access denied. Admin credentials required.'),
             backgroundColor: Colors.red,
@@ -52,7 +63,7 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
         );
       }
     } else {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger.showSnackBar(
         SnackBar(
           content: Text(authProvider.errorMessage ?? 'Login failed'),
           backgroundColor: Colors.red,
@@ -64,195 +75,279 @@ class _AdminLoginScreenState extends State<AdminLoginScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF1E3A8A),
-      body: Center(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24),
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 500),
-            child: Card(
-              elevation: 8,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
+      body: Column(
+        children: [
+          // ── Gold header band ─────────────────────────────────────────────
+          Container(
+            width: double.infinity,
+            color: _KCA.gold,
+            padding: const EdgeInsets.symmetric(vertical: 7),
+            child: const Text(
+              'STAFF & ADMINISTRATOR PORTAL',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: _KCA.navy,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.6,
               ),
-              child: Padding(
-                padding: const EdgeInsets.all(40),
-                child: Form(
-                  key: _formKey,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Admin Icon
-                      Container(
-                        width: 100,
-                        height: 100,
-                        decoration: BoxDecoration(
-                          color: const Color(0xFF1E3A8A),
-                          shape: BoxShape.circle,
-                          boxShadow: [
-                            BoxShadow(
-                              color: const Color(0xFF1E3A8A).withAlpha(76),
-                              blurRadius: 20,
-                              offset: const Offset(0, 10),
-                            ),
-                          ],
-                        ),
-                        child: const Icon(
-                          Icons.admin_panel_settings,
-                          size: 50,
-                          color: Colors.white,
-                        ),
+            ),
+          ),
+
+          // ── Navy body ────────────────────────────────────────────────────
+          Expanded(
+            child: Container(
+              color: _KCA.navy,
+              child: Center(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.all(24),
+                  child: Container(
+                    constraints: const BoxConstraints(maxWidth: 460),
+                    child: Card(
+                      elevation: 16,
+                      shadowColor: Colors.black38,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(20),
                       ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 40, vertical: 44),
+                        child: Form(
+                          key: _formKey,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              // ── Logo ───────────────────────────────────
+                              _buildLogo(),
 
-                      const SizedBox(height: 32),
+                              const SizedBox(height: 28),
 
-                      const Text(
-                        'Admin Portal',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF1E3A8A),
-                        ),
-                      ),
-
-                      const SizedBox(height: 8),
-
-                      Text(
-                        'KCA Foundation Management',
-                        style: TextStyle(
-                          fontSize: 15,
-                          color: Colors.grey[600],
-                        ),
-                      ),
-
-                      const SizedBox(height: 40),
-
-                      // Email Field
-                      TextFormField(
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        textInputAction: TextInputAction.next,
-                        decoration: InputDecoration(
-                          labelText: 'Admin Email',
-                          hintText: 'admin@kca.ac.ke',
-                          prefixIcon: const Icon(Icons.email_outlined),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey[50],
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Email is required';
-                          }
-                          if (!value.contains('@')) {
-                            return 'Enter a valid email';
-                          }
-                          return null;
-                        },
-                      ),
-
-                      const SizedBox(height: 20),
-
-                      // Password Field
-                      TextFormField(
-                        controller: _passwordController,
-                        obscureText: _obscurePassword,
-                        textInputAction: TextInputAction.done,
-                        onFieldSubmitted: (_) => _handleLogin(),
-                        decoration: InputDecoration(
-                          labelText: 'Password',
-                          hintText: 'Enter admin password',
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _obscurePassword
-                                  ? Icons.visibility_outlined
-                                  : Icons.visibility_off_outlined,
-                            ),
-                            onPressed: () {
-                              setState(() => _obscurePassword = !_obscurePassword);
-                            },
-                          ),
-                          border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          filled: true,
-                          fillColor: Colors.grey[50],
-                        ),
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Password is required';
-                          }
-                          return null;
-                        },
-                      ),
-
-                      const SizedBox(height: 32),
-
-                      // Login Button
-                      Consumer<AuthProvider>(
-                        builder: (context, authProvider, _) {
-                          return SizedBox(
-                            width: double.infinity,
-                            child: ElevatedButton(
-                              onPressed: authProvider.isLoading ? null : _handleLogin,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: const Color(0xFF1E3A8A),
-                                padding: const EdgeInsets.symmetric(vertical: 16),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
+                              // ── Titles ─────────────────────────────────
+                              const Text(
+                                'Admin Portal',
+                                style: TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.bold,
+                                  color: _KCA.navy,
                                 ),
-                                elevation: 0,
                               ),
-                              child: authProvider.isLoading
-                                  ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  valueColor: AlwaysStoppedAnimation<Color>(
-                                    Colors.white,
+                              const SizedBox(height: 6),
+                              Text(
+                                'KCA University Foundation',
+                                style: TextStyle(
+                                  fontSize: 14,
+                                  color: Colors.grey[600],
+                                  letterSpacing: 0.4,
+                                ),
+                              ),
+
+                              // ── Gold accent line ────────────────────────
+                              Padding(
+                                padding:
+                                const EdgeInsets.symmetric(vertical: 20),
+                                child: Container(
+                                  height: 3,
+                                  width: 56,
+                                  decoration: BoxDecoration(
+                                    color: _KCA.gold,
+                                    borderRadius: BorderRadius.circular(2),
                                   ),
                                 ),
-                              )
-                                  : const Text(
-                                'Login as Admin',
-                                style: TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.white,
+                              ),
+
+                              // ── Email field ─────────────────────────────
+                              TextFormField(
+                                controller: _emailController,
+                                keyboardType: TextInputType.emailAddress,
+                                textInputAction: TextInputAction.next,
+                                decoration: _inputDecoration(
+                                  label: 'Admin Email',
+                                  hint: 'admin@kca.ac.ke',
+                                  icon: Icons.email_outlined,
+                                ),
+                                validator: (v) {
+                                  if (v == null || v.isEmpty) {
+                                    return 'Email is required';
+                                  }
+                                  if (!v.contains('@')) {
+                                    return 'Enter a valid email';
+                                  }
+                                  return null;
+                                },
+                              ),
+
+                              const SizedBox(height: 18),
+
+                              // ── Password field ──────────────────────────
+                              TextFormField(
+                                controller: _passwordController,
+                                obscureText: _obscurePassword,
+                                textInputAction: TextInputAction.done,
+                                onFieldSubmitted: (_) => _handleLogin(),
+                                decoration: _inputDecoration(
+                                  label: 'Password',
+                                  hint: 'Enter admin password',
+                                  icon: Icons.lock_outline,
+                                ).copyWith(
+                                  suffixIcon: IconButton(
+                                    icon: Icon(
+                                      _obscurePassword
+                                          ? Icons.visibility_outlined
+                                          : Icons.visibility_off_outlined,
+                                      color: Colors.grey[600],
+                                    ),
+                                    onPressed: () => setState(() =>
+                                    _obscurePassword = !_obscurePassword),
+                                  ),
+                                ),
+                                validator: (v) {
+                                  if (v == null || v.isEmpty) {
+                                    return 'Password is required';
+                                  }
+                                  return null;
+                                },
+                              ),
+
+                              const SizedBox(height: 30),
+
+                              // ── Login button ────────────────────────────
+                              Consumer<AuthProvider>(
+                                builder: (context, auth, _) {
+                                  return SizedBox(
+                                    width: double.infinity,
+                                    child: ElevatedButton(
+                                      onPressed:
+                                      auth.isLoading ? null : _handleLogin,
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: _KCA.navy,
+                                        disabledBackgroundColor:
+                                        _KCA.navy.withAlpha(120),
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 16),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius:
+                                          BorderRadius.circular(12),
+                                        ),
+                                        elevation: 0,
+                                      ),
+                                      child: auth.isLoading
+                                          ? const SizedBox(
+                                        height: 20,
+                                        width: 20,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          valueColor:
+                                          AlwaysStoppedAnimation(
+                                              _KCA.white),
+                                        ),
+                                      )
+                                          : const Text(
+                                        'Login as Admin',
+                                        style: TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                          color: _KCA.white,
+                                        ),
+                                      ),
+                                    ),
+                                  );
+                                },
+                              ),
+
+                              const SizedBox(height: 20),
+
+                              // ── Back to donor login ─────────────────────
+                              TextButton.icon(
+                                onPressed: () =>
+                                    Navigator.pushReplacementNamed(
+                                        context, AppRoutes.login),
+                                icon: const Icon(Icons.arrow_back_ios,
+                                    size: 13, color: _KCA.navy),
+                                label: const Text(
+                                  'Back to Donor Login',
+                                  style: TextStyle(
+                                    color: _KCA.navy,
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 13,
+                                  ),
                                 ),
                               ),
-                            ),
-                          );
-                        },
-                      ),
-
-                      const SizedBox(height: 24),
-
-                      // Back to User Login
-                      TextButton(
-                        onPressed: () {
-                          Navigator.pushReplacementNamed(context, AppRoutes.login);
-                        },
-                        child: const Text(
-                          'Back to User Login',
-                          style: TextStyle(
-                            color: Color(0xFF1E3A8A),
-                            fontWeight: FontWeight.w600,
+                            ],
                           ),
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ),
               ),
             ),
           ),
-        ),
+        ],
       ),
+    );
+  }
+
+  // ── Logo: swap Container for Image.asset once you add your PNG ─────────────
+  Widget _buildLogo() {
+    // ✅ TO USE YOUR ACTUAL LOGO:
+    // 1. Place logo PNG at:  assets/images/kca_foundation_logo.png
+    // 2. Add to pubspec.yaml under flutter > assets
+    // 3. Replace the Container below with:
+    //
+    //    Image.asset('assets/images/kca_foundation_logo.png', height: 90)
+    //
+    return Container(
+      width: 90,
+      height: 90,
+      decoration: BoxDecoration(
+        color: _KCA.navy,
+        shape: BoxShape.circle,
+        border: Border.all(color: _KCA.gold, width: 3),
+        boxShadow: [
+          BoxShadow(
+            color: _KCA.navy.withAlpha(60),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: const Icon(
+        Icons.admin_panel_settings,
+        size: 44,
+        color: _KCA.white,
+      ),
+    );
+  }
+
+  // ── Shared input decoration helper ─────────────────────────────────────────
+  InputDecoration _inputDecoration({
+    required String label,
+    required String hint,
+    required IconData icon,
+  }) {
+    return InputDecoration(
+      labelText: label,
+      hintText: hint,
+      prefixIcon: Icon(icon, color: _KCA.navy),
+      filled: true,
+      fillColor: _KCA.lightBg,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey[300]!),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: Colors.grey[300]!),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: _KCA.navy, width: 2),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: Colors.red),
+      ),
+      labelStyle: const TextStyle(color: _KCA.navy),
     );
   }
 }
