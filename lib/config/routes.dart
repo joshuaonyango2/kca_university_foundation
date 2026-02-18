@@ -12,29 +12,53 @@ import '../screens/notifications/notifications_screen.dart'; // Notifications/In
 import '../screens/profile/profile_screen.dart';
 import '../screens/splash/splash_screen.dart';
 
+// lib/config/routes.dart
+
 class AppRoutes {
-  static const String splash = '/';
+  // ========================================
+  // USER ROUTES (For main_user.dart)
+  // ========================================
   static const String login = '/login';
   static const String register = '/register';
-  static const String forgotPassword = '/forgot-password';
+  static const String home = '/home';
+  static const String campaigns = '/campaigns';
+  static const String campaignDetails = '/campaign-details';
+  static const String donate = '/donate';
+  static const String profile = '/profile';
+  static const String notifications = '/notifications';
+  static const String receipts = '/receipts';
 
-  //Adin routes
+  // ========================================
+  // ADMIN ROUTES (For main_admin.dart)
+  // ========================================
   static const String adminLogin = '/admin/login';
   static const String adminDashboard = '/admin/dashboard';
   static const String adminCampaigns = '/admin/campaigns';
   static const String adminDonors = '/admin/donors';
+  static const String adminSettings = '/admin/settings';
+
+  static const String splash = '/';
+  //static const String login = '/login';
+  //static const String register = '/register';
+  static const String forgotPassword = '/forgot-password';
+
+  //Adin routes
+  //static const String adminLogin = '/admin/login';
+  //static const String adminDashboard = '/admin/dashboard';
+  //static const String adminCampaigns = '/admin/campaigns';
+  //static const String adminDonors = '/admin/donors';
   static const String adminTransactions = '/admin/transactions';
   static const String adminReports = '/admin/reports';
 
   //user routes
-  static const String home = '/home';
+  //static const String home = '/home';
   static const String campaignDetail = '/campaign-detail';
-  static const String donate = '/donate';
+  //static const String donate = '/donate';
   static const String donationFlow = '/donation-flow';
   static const String myDonations = '/my-donations';
-  static const String profile = '/profile';
+  //static const String profile = '/profile';
   static const String impact = '/impact'; // Per manuscript #7: Impact / Stories
-  static const String notifications = '/notifications'; // Per manuscript #9: Notifications / Inbox
+  //static const String notifications = '/notifications'; // Per manuscript #9: Notifications / Inbox
   static const String help = '/help'; // Per manuscript #10: Admin contact / Help
 
   static Route<dynamic> generateRoute(RouteSettings settings) {

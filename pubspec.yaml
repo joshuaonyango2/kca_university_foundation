@@ -36,9 +36,9 @@ dependencies:
   cupertino_icons: ^1.0.2
 
   # Auth & DB (Firebase option; remove if using custom backend)
-  #firebase_core: ^3.4.0
-  #firebase_auth: ^5.3.0
-  #cloud_firestore: ^5.4.0  # Corrected name
+  firebase_core: ^3.4.0
+  firebase_auth: ^5.3.0
+  cloud_firestore: ^5.4.0  # Corrected name
 
   # JSON Serialization
   json_annotation: ^4.9.0
