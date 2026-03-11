@@ -1,16 +1,34 @@
 {
   "hosting": {
     "public": "build/web",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "**",
-        "destination": "/index.html"
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [{"source": "**", "destination": "/index.html"}]
+  },
+  "firestore": {
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "kca-university-foundation",
+          "appId": "1:712922432471:android:738050840fdcb871980192",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "kca-university-foundation",
+          "configurations": {
+            "android": "1:712922432471:android:738050840fdcb871980192",
+            "ios": "1:712922432471:ios:93eb0dc69d575102980192",
+            "macos": "1:712922432471:ios:93eb0dc69d575102980192",
+            "web": "1:712922432471:web:2f7cc385a33a11ca980192",
+            "windows": "1:712922432471:web:ac1a7b9050c47c71980192"
+          }
+        }
       }
-    ]
+    }
   }
 }

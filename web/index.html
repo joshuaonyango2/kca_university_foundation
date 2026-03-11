@@ -1,38 +1,59 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
+    KCA University Foundation — Web App
+    Branding: Navy #1B2263 | Gold #F5A800
   -->
+
+  <!-- Google Sign-In OAuth Client ID -->
+  <meta name="google-signin-client_id" content="712922432471-u7bmf4mh2jvoas179h089a2slqs7fvfl.apps.googleusercontent.com">
+
   <base href="$FLUTTER_BASE_HREF">
 
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="KCA University Foundation Fundraising App.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="KCA University Foundation — Fundraising & Donations Platform.">
+  <meta name="theme-color" content="#1B2263">
 
-  <!-- iOS meta tags & icons -->
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="mobile">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+  <!-- Open Graph (looks great when shared on WhatsApp, LinkedIn, etc.) -->
+  <meta property="og:title"       content="KCA University Foundation">
+  <meta property="og:description" content="Support KCA University through our fundraising platform.">
+  <meta property="og:image"       content="icons/Icon-512.png">
+  <meta property="og:type"        content="website">
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+  <!-- iOS / Safari -->
+  <meta name="mobile-web-app-capable"                content="yes">
+  <meta name="apple-mobile-web-app-capable"          content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title"            content="KCA Foundation">
 
-  <title>mobile</title>
+  <!-- Apple touch icons -->
+  <link rel="apple-touch-icon" sizes="92x92" href="icons/Icon-192.png">
+  <link rel="apple-touch-icon" sizes="51x51" href="icons/Icon-512.png">
+
+  <!-- Favicon — browser tab icon -->
+  <link rel="icon" type="image/png" sizes="32x32"   href="favicon.png">
+  <link rel="icon" type="image/png" sizes="92x92" href="icons/Icon-192.png">
+  <link rel="icon" type="image/png" sizes="51x51" href="icons/Icon-512.png">
+
+  <title>KCA University Foundation</title>
   <link rel="manifest" href="manifest.json">
+
+  <!-- Splash background while Flutter loads — KCA navy -->
+  <style>
+    body {
+      margin: 0;
+      background-color: #1B2263;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+    }
+  </style>
 </head>
 <body>
-  <script src="flutter_bootstrap.js" async></script>
+<script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

@@ -12,7 +12,6 @@ class _KCA {
   static const white   = Colors.white;
   static const lightBg = Color(0xFFF5F7FA);
 }
-// ─────────────────────────────────────────────────────────────────────────────
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -36,8 +35,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _handleGoogleSignIn() async {
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final navigator = Navigator.of(context);
-    final messenger = ScaffoldMessenger.of(context);
+    final navigator    = Navigator.of(context);
+    final messenger    = ScaffoldMessenger.of(context);
 
     final success = await authProvider.signInWithGoogle();
 
@@ -59,11 +58,11 @@ class _LoginScreenState extends State<LoginScreen> {
     if (!_formKey.currentState!.validate()) return;
 
     final authProvider = Provider.of<AuthProvider>(context, listen: false);
-    final navigator = Navigator.of(context);
-    final messenger = ScaffoldMessenger.of(context);
+    final navigator    = Navigator.of(context);
+    final messenger    = ScaffoldMessenger.of(context);
 
     final success = await authProvider.login(
-      email: _emailController.text.trim(),
+      email:    _emailController.text.trim(),
       password: _passwordController.text,
     );
 
@@ -194,7 +193,29 @@ class _LoginScreenState extends State<LoginScreen> {
                       },
                     ),
 
-                    const SizedBox(height: 28),
+                    // ── Forgot Password link ──────────────────────────────
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(
+                        onPressed: () => Navigator.pushNamed(
+                            context, AppRoutes.forgotPassword),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
+                              vertical: 4, horizontal: 0),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        ),
+                        child: const Text(
+                          'Forgot Password?',
+                          style: TextStyle(
+                            color: _KCA.navy,
+                            fontWeight: FontWeight.w600,
+                            fontSize: 13,
+                          ),
+                        ),
+                      ),
+                    ),
+
+                    const SizedBox(height: 16),
 
                     // ── Login button ──────────────────────────────────────
                     Consumer<AuthProvider>(
@@ -241,12 +262,12 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         Text(
                           "Don't have an account? ",
-                          style: TextStyle(
-                              fontSize: 15, color: Colors.grey[700]),
+                          style:
+                          TextStyle(fontSize: 15, color: Colors.grey[700]),
                         ),
                         TextButton(
-                          onPressed: () => Navigator.pushNamed(
-                              context, AppRoutes.register),
+                          onPressed: () =>
+                              Navigator.pushNamed(context, AppRoutes.register),
                           style: TextButton.styleFrom(
                             padding: EdgeInsets.zero,
                             minimumSize: Size.zero,
@@ -271,7 +292,8 @@ class _LoginScreenState extends State<LoginScreen> {
                       children: [
                         Expanded(child: Divider(color: Colors.grey[350])),
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 14),
+                          padding:
+                          const EdgeInsets.symmetric(horizontal: 14),
                           child: Text(
                             'OR',
                             style: TextStyle(
@@ -363,9 +385,8 @@ class _LoginScreenState extends State<LoginScreen> {
       child: ClipRRect(
         borderRadius: BorderRadius.circular(12),
         child: Image.asset(
-          'assets/icon/kca_logo.png',   // ✅ uses your existing asset
+          'assets/image.asset.png',
           fit: BoxFit.contain,
-          // Shows "KCA" text if the image file is missing or fails to load
           errorBuilder: (context, error, stackTrace) {
             return const Center(
               child: Text(
@@ -374,7 +395,6 @@ class _LoginScreenState extends State<LoginScreen> {
                   fontSize: 28,
                   fontWeight: FontWeight.bold,
                   color: _KCA.navy,
-                  letterSpacing: 1,
                 ),
               ),
             );
@@ -384,7 +404,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  // ── Shared input decoration helper ──────────────────────────────────────────
+  // ── Input decoration helper ─────────────────────────────────────────────────
   InputDecoration _inputDecoration({
     required String label,
     required String hint,
@@ -397,21 +417,17 @@ class _LoginScreenState extends State<LoginScreen> {
       filled: true,
       fillColor: _KCA.lightBg,
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey[300]!),
-      ),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey[300]!)),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.grey[300]!),
-      ),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: BorderSide(color: Colors.grey[300]!)),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: _KCA.navy, width: 2),
-      ),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: _KCA.navy, width: 2)),
       errorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: Colors.red),
-      ),
+          borderRadius: BorderRadius.circular(12),
+          borderSide: const BorderSide(color: Colors.red)),
       labelStyle: const TextStyle(color: _KCA.navy),
     );
   }
@@ -423,9 +439,6 @@ class _GoogleIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // ✅ To use the real Google logo, add assets/images/google_logo.png
-    // and replace this widget with:
-    // return Image.asset('assets/images/google_logo.png', width: 22, height: 22);
     return const SizedBox(
       width: 22,
       height: 22,

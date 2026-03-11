@@ -1,14 +1,19 @@
 {
-    "name": "mobile",
-    "short_name": "mobile",
+    "name": "KCA University Foundation",
+    "short_name": "KCA Foundation",
     "start_url": ".",
     "display": "standalone",
-    "background_color": "#0175C2",
-    "theme_color": "#0175C2",
-    "description": "KCA University Foundation Fundraising App.",
+    "background_color": "#1B2263",
+    "theme_color": "#1B2263",
+    "description": "KCA University Foundation — Fundraising & Donations Platform.",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [
+        {
+            "src": "favicon.png",
+            "sizes": "32x32",
+            "type": "image/png"
+        },
         {
             "src": "icons/Icon-192.png",
             "sizes": "192x192",

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "712922432471",
+    "project_id": "kca-university-foundation",
+    "storage_bucket": "kca-university-foundation.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:712922432471:android:738050840fdcb871980192",
+        "android_client_info": {
+          "package_name": "com.kca.foundation.mobile"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCwYWrPOaXQQ1iVZ0D0Map4PqHHmvd0ExA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

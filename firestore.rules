@@ -1,0 +1,92 @@
+// firestore.rules
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isAdmin() {
+      return request.auth != null && (
+        // Hard-coded admin emails always have full access
+        request.auth.token.email == 'admin@kca.ac.ke' ||
+        request.auth.token.email == 'foundation@kca.ac.ke' ||
+        // Staff members with is_admin flag set in their staff doc
+        (exists(/databases/$(database)/documents/staff/$(request.auth.uid)) &&
+         get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.is_admin == true)
+      );
+    }
+
+    function isStaff() { return request.auth != null; }
+
+    function staffHasPermission(perm) {
+      return isAdmin() ||
+             (isStaff() &&
+              exists(/databases/$(database)/documents/staff/$(request.auth.uid)) &&
+              perm in get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.permissions);
+    }
+
+    // ── Donors ────────────────────────────────────────────────────────────────
+    match /donors/{userId} {
+      allow read:   if request.auth != null && (request.auth.uid == userId || isAdmin() || staffHasPermission('view_donors'));
+      allow write:  if request.auth != null && (request.auth.uid == userId || isAdmin() || staffHasPermission('manage_donors'));
+    }
+
+    // ── Campaigns ─────────────────────────────────────────────────────────────
+    match /campaigns/{campaignId} {
+      allow read:   if request.auth != null;
+      allow write:  if isAdmin() || staffHasPermission('manage_campaigns');
+    }
+
+    // ── Donations ─────────────────────────────────────────────────────────────
+    match /donations/{donationId} {
+      allow create: if request.auth != null;
+      allow read:   if request.auth != null && (request.auth.uid == resource.data.donor_id || isAdmin() || staffHasPermission('view_transactions'));
+      allow update: if isAdmin() || staffHasPermission('manage_donors');
+      allow delete: if isAdmin();
+    }
+
+    // ── Receipts ──────────────────────────────────────────────────────────────
+    match /receipts/{receiptId} {
+      allow create: if request.auth != null;
+      allow read:   if request.auth != null && (resource.data.donor_id == request.auth.uid || isAdmin() || staffHasPermission('view_transactions'));
+      allow update, delete: if isAdmin();
+    }
+
+    // ── Notifications ─────────────────────────────────────────────────────────
+    match /notifications/{notifId} {
+      allow create: if isAdmin() || staffHasPermission('manage_staff');
+      allow read:   if request.auth != null && (resource.data.recipient_id == request.auth.uid || resource.data.recipient_id == 'all' || isAdmin());
+      allow update: if request.auth != null && resource.data.recipient_id == request.auth.uid;
+      allow delete: if isAdmin();
+    }
+
+    // ── FCM Tokens ────────────────────────────────────────────────────────────
+    match /fcm_tokens/{uid} {
+      allow read, write: if request.auth != null && request.auth.uid == uid;
+      allow read:        if isAdmin();
+    }
+
+    // ── Staff ─────────────────────────────────────────────────────────────────
+    // Admins can fully manage staff docs.
+    // Staff can read and update their own doc (e.g. profile edits).
+    match /staff/{staffId} {
+      allow read:   if isAdmin() || staffHasPermission('manage_staff') || request.auth.uid == staffId;
+      allow create: if isAdmin() || staffHasPermission('manage_staff');
+      allow update: if isAdmin() || staffHasPermission('manage_staff') || request.auth.uid == staffId;
+      allow delete: if isAdmin();
+    }
+
+    // ── Roles ─────────────────────────────────────────────────────────────────
+    // ANY authenticated user can read roles (needed for role selector in Add Admin form).
+    // Only admins / authorised staff can write.
+    match /roles/{roleId} {
+      allow read:   if request.auth != null;
+      allow create: if isAdmin() || staffHasPermission('manage_roles');
+      allow update: if isAdmin() || staffHasPermission('manage_roles');
+      allow delete: if isAdmin();
+    }
+
+    // ── Default deny ──────────────────────────────────────────────────────────
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

@@ -3,28 +3,25 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:firebase_core/firebase_core.dart';
 
 // Providers
 import 'providers/auth_provider.dart';
 import 'providers/campaign_provider.dart';
+import 'providers/staff_provider.dart';
 
 // Config
 import 'config/routes.dart';
-
-// Screens
-import 'screens/splash/splash_screen.dart';
-import 'screens/auth/login_screen.dart';
-import 'screens/auth/register_screen.dart';
-import 'screens/home/home_screen.dart';
-import 'screens/admin/admin_login_screen.dart';
-import 'screens/admin/admin_dashboard_screen.dart';
-import 'screens/campaign/campaign_detail_screen.dart';
-import 'screens/profile/profile_screen.dart';
+import 'firebase_options.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Initialize SharedPreferences
+  // ✅ Initialize Firebase FIRST
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
+
   final prefs = await SharedPreferences.getInstance();
 
   runApp(MyApp(prefs: prefs));
@@ -33,7 +30,7 @@ void main() async {
 class MyApp extends StatelessWidget {
   final SharedPreferences prefs;
 
-  const MyApp({Key? key, required this.prefs}) : super(key: key);
+  const MyApp({super.key, required this.prefs});
 
   @override
   Widget build(BuildContext context) {
@@ -45,29 +42,40 @@ class MyApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => CampaignProvider(),
         ),
+        ChangeNotifierProvider(          // ✅ Staff / RBAC provider
+          create: (_) => StaffProvider(),
+        ),
       ],
       child: MaterialApp(
-        title: 'KCA Foundation',
+        title: 'KCA University Foundation',
         debugShowCheckedModeBanner: false,
         theme: _buildTheme(),
+
+        // ✅ Use onGenerateRoute — handles ALL routes including ones with arguments
         initialRoute: AppRoutes.splash,
-        routes: _buildRoutes(),
+        onGenerateRoute: AppRoutes.generateRoute,
+
+        // ✅ Fallback for any unknown route
+        onUnknownRoute: (settings) => MaterialPageRoute(
+          builder: (_) => Scaffold(
+            body: Center(
+              child: Text('Page not found: ${settings.name}'),
+            ),
+          ),
+        ),
       ),
     );
   }
 
-  // Build theme
   ThemeData _buildTheme() {
     return ThemeData(
-      primaryColor: const Color(0xFF1E3A8A),
+      primaryColor: const Color(0xFF1B2263),
       colorScheme: ColorScheme.fromSeed(
-        seedColor: const Color(0xFF1E3A8A),
-        primary: const Color(0xFF1E3A8A),
-        secondary: const Color(0xFF2563EB),
+        seedColor: const Color(0xFF1B2263),
+        primary: const Color(0xFF1B2263),
+        secondary: const Color(0xFFF5A800),
       ),
       useMaterial3: true,
-
-      // Input decoration theme
       inputDecorationTheme: InputDecorationTheme(
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
@@ -75,11 +83,9 @@ class MyApp extends StatelessWidget {
         filled: true,
         fillColor: Colors.grey[50],
       ),
-
-      // Elevated button theme
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFF1E3A8A),
+          backgroundColor: const Color(0xFF1B2263),
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 16),
           shape: RoundedRectangleBorder(
@@ -88,29 +94,12 @@ class MyApp extends StatelessWidget {
           elevation: 0,
         ),
       ),
-
-      // AppBar theme
       appBarTheme: const AppBarTheme(
-        backgroundColor: Color(0xFF1E3A8A),
+        backgroundColor: Color(0xFF1B2263),
         foregroundColor: Colors.white,
         elevation: 0,
         centerTitle: true,
       ),
     );
-  }
-
-  // Build routes
-  Map<String, WidgetBuilder> _buildRoutes() {
-    return {
-      AppRoutes.splash: (context) => const SplashScreen(),
-      AppRoutes.login: (context) => const LoginScreen(),
-      AppRoutes.register: (context) => const RegisterScreen(),
-      AppRoutes.home: (context) => const HomeScreen(),
-      AppRoutes.profile: (context) => const ProfileScreen(),
-
-      // Admin routes
-      AppRoutes.adminLogin: (context) => const AdminLoginScreen(),
-      AppRoutes.adminDashboard: (context) => const AdminDashboardScreen(),
-    };
   }
 }
