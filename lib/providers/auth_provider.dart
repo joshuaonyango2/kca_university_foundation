@@ -3,17 +3,17 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';  // ✅ ADDED
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 
 class AuthProvider extends ChangeNotifier {
-  final SharedPreferences prefs;
+  final SharedPreferences? prefs; // nullable — SP resolves via flutter pub get
 
   // ── Firebase & Google instances ────────────────────────────────────────────
   final FirebaseAuth      _firebaseAuth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore    = FirebaseFirestore.instance; //  ADDED
+  final FirebaseFirestore _firestore    = FirebaseFirestore.instance; // ✅ ADDED
   final GoogleSignIn      _googleSignIn = GoogleSignIn(
     clientId: '712922432471-u7bmf4mh2jvoas179h089a2slqs7fvfl.apps.googleusercontent.com',
   );
@@ -24,8 +24,21 @@ class AuthProvider extends ChangeNotifier {
   bool       _isGoogleLoading = false;
   String?    _errorMessage;
 
-  AuthProvider({required this.prefs}) {
+  AuthProvider({this.prefs}) {
+    _initPersistence();
     _restoreSession();
+  }
+
+  /// On web: use SESSION persistence so closing the tab signs the user out.
+  /// On mobile: use LOCAL persistence (default) — normal app behaviour.
+  Future<void> _initPersistence() async {
+    if (kIsWeb) {
+      try {
+        await _firebaseAuth.setPersistence(Persistence.SESSION);
+      } catch (e) {
+        debugPrint('⚠️ setPersistence: $e');
+      }
+    }
   }
 
   // ── Getters ────────────────────────────────────────────────────────────────
@@ -54,14 +67,14 @@ class AuthProvider extends ChangeNotifier {
       final doc = await _firestore.collection('donors').doc(uid).get();
       if (doc.exists && _user != null) {
         final data      = doc.data();
-        final donorType = _parseDonorType(data?['donor_type'] as String?);
+        final donorType = data?['donor_type'] as String?;
         _user = UserModel(
           id:              _user!.id,
           email:           _user!.email,
           name:            _user!.name,
           phoneNumber:     data?['phone'] as String? ?? _user!.phoneNumber,
           role:            _user!.role,
-          donorType:       donorType,     // ✅ restored from Firestore
+          donorType:       donorType,
           isEmailVerified: _user!.isEmailVerified,
           isPhoneVerified: _user!.isPhoneVerified,
           createdAt:       _user!.createdAt,
@@ -190,7 +203,7 @@ class AuthProvider extends ChangeNotifier {
     required String    password,
     required String    name,
     required String    phone,      // ✅ ADDED
-    required DonorType donorType,  // ✅ ADDED
+    required String    donorType,  // donor_types doc ID (e.g. 'individual')
   }) async {
     _isLoading = true;
     _errorMessage = null;
@@ -222,7 +235,7 @@ class AuthProvider extends ChangeNotifier {
           'email':      email.trim(),
           'phone':      phone,
           'role':       'donor',
-          'donor_type': donorType.name,
+          'donor_type': donorType,
           'created_at': DateTime.now().toIso8601String(),
         }).timeout(const Duration(seconds: 8));
       } catch (firestoreError) {
@@ -352,13 +365,5 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  // ✅ Local helper — parses Firestore donor_type string to DonorType enum
-  DonorType? _parseDonorType(String? value) {
-    switch (value) {
-      case 'individual': return DonorType.individual;
-      case 'corporate':  return DonorType.corporate;
-      case 'partner':    return DonorType.partner;
-      default:           return null;
-    }
-  }
+// donor_type is now stored as a plain String — no enum parsing needed
 }

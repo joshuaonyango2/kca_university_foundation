@@ -5,9 +5,11 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
 import 'package:provider/provider.dart';
 import '../../config/routes.dart';
+import '../notifications/notifications_screen.dart';
 import '../../models/campaign.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/campaign_provider.dart';
+import '../../services/category_service.dart';
 
 // ── Brand tokens ──────────────────────────────────────────────────────────────
 class _KCA {
@@ -33,12 +35,13 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedIndex = 0;
 
-  static const _titles = ['Dashboard', 'Campaigns', 'Donations', 'Profile'];
+  static const _titles = ['Dashboard', 'Campaigns', 'Donations', 'Notifications', 'Profile'];
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
       context.read<CampaignProvider>().fetchCampaigns();
     });
   }
@@ -50,7 +53,8 @@ class _HomeScreenState extends State<HomeScreen> {
       case 0: return _DashboardTab(onTabSwitch: _goToTab);
       case 1: return const _CampaignsTab();
       case 2: return const _DonationsTab();
-      case 3: return const _ProfileTab();
+      case 3: return const NotificationsScreen();
+      case 4: return const _ProfileTab();
       default: return _DashboardTab(onTabSwitch: _goToTab);
     }
   }
@@ -90,7 +94,7 @@ class _HomeScreenState extends State<HomeScreen> {
             uid: FirebaseAuth.instance.currentUser?.uid ?? ''),
         const SizedBox(width: 6),
         GestureDetector(
-            onTap: () => _goToTab(3),
+            onTap: () => _goToTab(4),
             child: Container(
                 width: 36, height: 36,
                 margin: const EdgeInsets.only(right: 12),
@@ -155,8 +159,8 @@ class _HomeScreenState extends State<HomeScreen> {
                     color: _KCA.gold,
                     borderRadius: BorderRadius.circular(12)),
                 child: Text(
-                    user?.donorType?.displayName != null
-                        ? '${user!.donorType!.displayName} Donor'
+                    user?.donorTypeLabel.isNotEmpty == true
+                        ? '${user!.donorTypeLabel} Donor'
                         : 'Donor Portal',
                     style: const TextStyle(
                         color: _KCA.navy,
@@ -186,10 +190,20 @@ class _HomeScreenState extends State<HomeScreen> {
                 label: 'Donations',
                 index: 2),
             _navItem(context,
+                icon: Icons.notifications_outlined,
+                activeIcon: Icons.notifications_rounded,
+                label: 'Notifications',
+                index: 3,
+                badgeStream: FirebaseFirestore.instance
+                    .collection('notifications')
+                    .where('recipient_id', isEqualTo: FirebaseAuth.instance.currentUser?.uid ?? '')
+                    .where('is_read', isEqualTo: false)
+                    .snapshots()),
+            _navItem(context,
                 icon: Icons.person_outline,
                 activeIcon: Icons.person_rounded,
                 label: 'Profile',
-                index: 3),
+                index: 4),
           ])),
 
       Divider(color: Colors.white.withAlpha(30), height: 1),
@@ -220,13 +234,35 @@ class _HomeScreenState extends State<HomeScreen> {
       {required IconData icon,
         required IconData activeIcon,
         required String label,
-        required int index}) {
+        required int index,
+        Stream<QuerySnapshot>? badgeStream}) {
     final isActive = _selectedIndex == index;
     return Container(
         margin: const EdgeInsets.only(bottom: 4),
         child: ListTile(
-            leading: Icon(
-                isActive ? activeIcon : icon,
+            leading: badgeStream != null
+                ? StreamBuilder<QuerySnapshot>(
+                stream: badgeStream,
+                builder: (ctx, snap) {
+                  final count = snap.data?.docs.length ?? 0;
+                  return Stack(clipBehavior: Clip.none, children: [
+                    Icon(isActive ? activeIcon : icon,
+                        color: isActive ? _KCA.gold : Colors.white.withAlpha(180),
+                        size: 20),
+                    if (count > 0)
+                      Positioned(right: -4, top: -4,
+                          child: Container(
+                              width: 14, height: 14,
+                              decoration: const BoxDecoration(
+                                  color: _KCA.gold, shape: BoxShape.circle),
+                              child: Center(child: Text(
+                                  count > 9 ? '9+' : '$count',
+                                  style: const TextStyle(
+                                      fontSize: 8, color: _KCA.navy,
+                                      fontWeight: FontWeight.bold))))),
+                  ]);
+                })
+                : Icon(isActive ? activeIcon : icon,
                 color: isActive ? _KCA.gold : Colors.white.withAlpha(180),
                 size: 20),
             title: Text(label,
@@ -273,7 +309,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     uid: FirebaseAuth.instance.currentUser?.uid ?? ''),
                 const SizedBox(width: 8),
                 GestureDetector(
-                    onTap: () => _goToTab(3),
+                    onTap: () => _goToTab(4),
                     child: Container(
                         width: 38, height: 38,
                         decoration: BoxDecoration(
@@ -549,10 +585,34 @@ class _FeaturedCampaignList extends StatelessWidget {
         return const Padding(padding: EdgeInsets.all(16),
             child: Center(child: CircularProgressIndicator(color: _KCA.navy)));
       }
+      // Show error with retry button
+      if (prov.error != null) {
+        return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Column(children: [
+              Row(children: [
+                const Icon(Icons.wifi_off_outlined, color: Colors.orange, size: 22),
+                const SizedBox(width: 10),
+                Expanded(child: Text('Could not load campaigns',
+                    style: TextStyle(color: Colors.grey[600], fontSize: 13))),
+              ]),
+              const SizedBox(height: 10),
+              SizedBox(width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: () => ctx.read<CampaignProvider>().fetchCampaigns(),
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('Retry'),
+                    style: OutlinedButton.styleFrom(
+                        foregroundColor: _KCA.navy,
+                        side: const BorderSide(color: _KCA.navy),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8))),
+                  )),
+            ]));
+      }
       final list = prov.activeCampaigns.take(3).toList();
       if (list.isEmpty) {
         return _emptyState(
-            Icons.campaign_outlined, 'No campaigns yet');
+            Icons.campaign_outlined, 'No active campaigns at the moment');
       }
       return Column(children: list.asMap().entries.map((e) {
         final campaign = e.value;
@@ -929,9 +989,18 @@ class _CampaignsTab extends StatefulWidget {
 class _CampaignsTabState extends State<_CampaignsTab> {
   String _search   = '';
   String _category = 'all';
+  List<CampaignCategory> _cats = [];
 
-  static const _cats = ['all', 'scholarships', 'infrastructure', 'research',
-    'health', 'community'];
+  @override
+  void initState() {
+    super.initState();
+    _loadCats();
+  }
+
+  Future<void> _loadCats() async {
+    final cats = await CategoryService.fetch();
+    if (mounted) setState(() => _cats = cats);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -961,24 +1030,48 @@ class _CampaignsTabState extends State<_CampaignsTab> {
                 height: 34,
                 child: ListView.separated(
                     scrollDirection: Axis.horizontal,
-                    itemCount: _cats.length,
+                    itemCount: _cats.length + 1, // +1 for "All"
                     separatorBuilder: (_, __) => const SizedBox(width: 8),
                     itemBuilder: (_, i) {
-                      final cat = _cats[i];
-                      final active = _category == cat;
+                      if (i == 0) {
+                        final active = _category == 'all';
+                        return GestureDetector(
+                            onTap: () => setState(() => _category = 'all'),
+                            child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
+                                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                                decoration: BoxDecoration(
+                                    color: active ? _KCA.navy : Colors.white,
+                                    borderRadius: BorderRadius.circular(20),
+                                    border: Border.all(
+                                        color: active ? _KCA.navy : Colors.grey[300]!)),
+                                child: Text('All',
+                                    style: TextStyle(fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: active ? Colors.white : Colors.grey[600]))));
+                      }
+                      final cat    = _cats[i - 1];
+                      final active = _category == cat.name;
                       return GestureDetector(
-                          onTap: () => setState(() => _category = cat),
+                          onTap: () => setState(() => _category = cat.name),
                           child: AnimatedContainer(
                               duration: const Duration(milliseconds: 200),
-                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                               decoration: BoxDecoration(
-                                  color: active ? _KCA.navy : Colors.white,
+                                  color: active ? cat.color : Colors.white,
                                   borderRadius: BorderRadius.circular(20),
-                                  border: Border.all(color: active ? _KCA.navy : Colors.grey[300]!)),
-                              child: Text(
-                                  cat == 'all' ? 'All' : '${cat[0].toUpperCase()}${cat.substring(1)}',
-                                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                                      color: active ? Colors.white : Colors.grey[600]))));
+                                  border: Border.all(
+                                      color: active ? cat.color : Colors.grey[300]!)),
+                              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                                if (active) ...[
+                                  Icon(cat.icon, size: 12, color: Colors.white),
+                                  const SizedBox(width: 4),
+                                ],
+                                Text(cat.name,
+                                    style: TextStyle(fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                        color: active ? Colors.white : Colors.grey[600])),
+                              ])));
                     })),
           ])),
 
@@ -986,15 +1079,39 @@ class _CampaignsTabState extends State<_CampaignsTab> {
       Expanded(child: StreamBuilder<List<Campaign>>(
           stream: context.read<CampaignProvider>().allCampaignsStream(),
           builder: (ctx, snap) {
+            // Loading
             if (snap.connectionState == ConnectionState.waiting) {
               return const Center(child: CircularProgressIndicator(color: _KCA.navy));
             }
-            var list = snap.data ?? [];
-            // category filter
-            if (_category != 'all') {
-              list = list.where((c) => c.category.toLowerCase() == _category).toList();
+            // Firestore error — missing index, network, permissions
+            if (snap.hasError) {
+              return Center(child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                    const Icon(Icons.cloud_off_outlined, size: 56, color: Colors.orange),
+                    const SizedBox(height: 16),
+                    const Text('Could not load campaigns',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: _KCA.navy)),
+                    const SizedBox(height: 8),
+                    Text(snap.error.toString(),
+                        style: TextStyle(fontSize: 11, color: Colors.grey[400]),
+                        textAlign: TextAlign.center, maxLines: 4,
+                        overflow: TextOverflow.ellipsis),
+                    const SizedBox(height: 20),
+                    ElevatedButton.icon(
+                        onPressed: () => ctx.read<CampaignProvider>().refresh(),
+                        icon: const Icon(Icons.refresh, size: 18),
+                        label: const Text('Retry'),
+                        style: ElevatedButton.styleFrom(
+                            backgroundColor: _KCA.navy, foregroundColor: Colors.white,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)))),
+                  ])));
             }
-            // search filter
+            var list = snap.data ?? [];
+            if (_category != 'all') {
+              list = list.where((c) =>
+              c.category.toLowerCase() == _category.toLowerCase()).toList();
+            }
             if (_search.isNotEmpty) {
               list = list.where((c) =>
               c.title.toLowerCase().contains(_search) ||
@@ -1005,9 +1122,22 @@ class _CampaignsTabState extends State<_CampaignsTab> {
               return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                 Icon(Icons.campaign_outlined, size: 56, color: Colors.grey[200]),
                 const SizedBox(height: 12),
-                Text(_search.isEmpty ? 'No campaigns in this category'
-                    : 'No results for "$_search"',
-                    style: TextStyle(color: Colors.grey[400], fontSize: 15)),
+                Text(
+                    _search.isNotEmpty
+                        ? 'No results for "$_search"'
+                        : _category != 'all'
+                        ? 'No ${_category[0].toUpperCase()}${_category.substring(1)} campaigns yet'
+                        : 'No active campaigns at the moment',
+                    style: TextStyle(color: Colors.grey[400], fontSize: 15),
+                    textAlign: TextAlign.center),
+                if (_category != 'all' || _search.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  TextButton.icon(
+                      onPressed: () => setState(() { _category = 'all'; _search = ''; }),
+                      icon: const Icon(Icons.clear, size: 16),
+                      label: const Text('Clear filters'),
+                      style: TextButton.styleFrom(foregroundColor: _KCA.navy)),
+                ],
               ]));
             }
             return ListView.builder(
@@ -1476,7 +1606,7 @@ class _ProfileTab extends StatelessWidget {
                   decoration: BoxDecoration(
                       color: _KCA.gold, borderRadius: BorderRadius.circular(20)),
                   child: Text(
-                      '${user!.donorType!.icon}  ${user.donorType!.displayName} Donor',
+                      user!.donorTypeLabel.isNotEmpty ? '${user.donorTypeLabel} Donor' : 'Donor Portal',
                       style: const TextStyle(color: _KCA.navy,
                           fontWeight: FontWeight.bold, fontSize: 13))),
           ])),

@@ -1,51 +1,53 @@
 // test/widget_test.dart
+//
+// ✅ FIX: Package name in pubspec.yaml is 'kca_foundation' (not 'kca_university_foundation').
+//    Corrected the import on line 21.
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'package:kca_university_foundation/main.dart' as app;
+import 'package:kca_foundation/main.dart' as app; // ✅ FIXED package name
 
 void main() {
-  testWidgets('App loads successfully', (WidgetTester tester) async {
+  setUpAll(() {
+    TestWidgetsFlutterBinding.ensureInitialized();
+  });
+
+  setUp(() {
     SharedPreferences.setMockInitialValues({});
-    final prefs = await SharedPreferences.getInstance();
+  });
 
-    // ✅ Fixed: use app.MyApp (matches the 'as app' import alias)
-    await tester.pumpWidget(app.MyApp(prefs: prefs));
-
+  testWidgets('App loads and shows splash screen', (WidgetTester tester) async {
+    await tester.pumpWidget(const app.MyApp());
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
-
-    await tester.pumpAndSettle();
-
-    expect(find.text('Welcome Back'), findsOneWidget);
   });
 
-  testWidgets('Login screen displays correctly', (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
-    final prefs = await SharedPreferences.getInstance();
+  testWidgets('Navigates to login after onboarding is done',
+          (WidgetTester tester) async {
+        SharedPreferences.setMockInitialValues({'onboarding_done': true});
 
-    // ✅ Fixed: use app.MyApp
-    await tester.pumpWidget(app.MyApp(prefs: prefs));
-    await tester.pumpAndSettle();
+        await tester.pumpWidget(const app.MyApp());
+        await tester.pump(const Duration(seconds: 3));
+        await tester.pumpAndSettle();
 
-    expect(find.text('Welcome Back'), findsOneWidget);
-    expect(find.byType(TextField), findsNWidgets(2));
-    expect(find.text('Login'), findsOneWidget);
-  });
+        expect(find.text('Welcome Back'), findsOneWidget);
+        expect(find.byType(TextField), findsNWidgets(2));
+        expect(find.text('Login'), findsOneWidget);
+      });
 
-  testWidgets('Can type in email field', (WidgetTester tester) async {
-    SharedPreferences.setMockInitialValues({});
-    final prefs = await SharedPreferences.getInstance();
+  testWidgets('Can type in email field on login screen',
+          (WidgetTester tester) async {
+        SharedPreferences.setMockInitialValues({'onboarding_done': true});
 
-    // ✅ Fixed: use app.MyApp
-    await tester.pumpWidget(app.MyApp(prefs: prefs));
-    await tester.pumpAndSettle();
+        await tester.pumpWidget(const app.MyApp());
+        await tester.pump(const Duration(seconds: 3));
+        await tester.pumpAndSettle();
 
-    final emailField = find.byType(TextField).first;
-    await tester.enterText(emailField, 'test@example.com');
-    await tester.pump();
+        final emailField = find.byType(TextField).first;
+        await tester.enterText(emailField, 'test@example.com');
+        await tester.pump();
 
-    expect(find.text('test@example.com'), findsOneWidget);
-  });
+        expect(find.text('test@example.com'), findsOneWidget);
+      });
 }

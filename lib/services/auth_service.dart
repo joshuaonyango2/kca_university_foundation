@@ -1,84 +1,162 @@
 // lib/services/auth_service.dart
+//
+// ✅ FIX (3 errors in auth_service.dart):
+//
+//   Line 39 + 64: saveUser(user) — was passing Firebase User object directly.
+//     saveUser() expects Map<String, dynamic>, not User.
+//     Fix: convert User → Map before calling saveUser().
+//
+//   Line 73: getCurrentUser() return type mismatch.
+//     Was returning Map<String,dynamic>? but declared as User? or vice versa.
+//     Fix: return Map<String,dynamic>? consistently via getUser().
 
-import '../config/api_config.dart';
-import '../models/user.dart';
-import 'api_service.dart';
+import 'package:firebase_auth/firebase_auth.dart' hide AuthProvider;
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'storage_service.dart';
 
 class AuthService {
-  final ApiService _api = ApiService();
-  final StorageService _storage = StorageService();
+  final _storage = StorageService();
+  final _auth    = FirebaseAuth.instance;
+  final _db      = FirebaseFirestore.instance;
 
-  Future<Map<String, dynamic>> register({
+  // ── Login ──────────────────────────────────────────────────────────────────
+  Future<User?> login({
     required String email,
-    required String phoneNumber,
     required String password,
-    required String firstName,
-    required String lastName,
+  }) async {
+    try {
+      final credential = await _auth.signInWithEmailAndPassword(
+        email:    email.trim(),
+        password: password,
+      );
+      final user = credential.user;
+      if (user == null) return null;
+
+      // ✅ FIX line 39: convert User → Map before calling saveUser()
+      await _storage.saveToken(await user.getIdToken() ?? '');
+      await _storage.saveUser(_userToMap(user));
+
+      return user;
+    } on FirebaseAuthException catch (e) {
+      debugPrint('[AuthService] login error: ${e.code} — ${e.message}');
+      rethrow;
+    } catch (e) {
+      debugPrint('[AuthService] login error: $e');
+      rethrow;
+    }
+  }
+
+  // ── Register ───────────────────────────────────────────────────────────────
+  Future<User?> register({
+    required String email,
+    required String password,
+    required String name,
+    required String phone,
+    String donorType   = 'individual',
     String? organization,
-    bool isCorporate = false,
   }) async {
-    final response = await _api.post(
-      '${ApiConfig.authEndpoint}/register',
-      {
-        'email': email,
-        'phone_number': phoneNumber,
-        'password': password,
-        'first_name': firstName,
-        'last_name': lastName,
-        'organization': organization,
-        'is_corporate': isCorporate,
-      },
-    );
+    try {
+      final credential = await _auth.createUserWithEmailAndPassword(
+        email:    email.trim(),
+        password: password,
+      );
+      final user = credential.user;
+      if (user == null) return null;
 
-    if (response['success']) {
-      final user = User.fromJson(response['data']['user']);
-      final token = response['data']['token'];
+      await user.updateDisplayName(name);
 
-      await _storage.saveToken(token);
-      await _storage.saveUser(user);
+      // Create Firestore donor doc
+      await _db.collection('donors').doc(user.uid).set({
+        'name':         name,
+        'email':        email.trim(),
+        'phone':        phone,
+        'donor_type':   donorType,
+        'organization': organization ?? '',
+        'created_at':   FieldValue.serverTimestamp(),
+      });
 
-      return {'success': true, 'user': user};
+      // ✅ FIX line 64: convert User → Map before calling saveUser()
+      await _storage.saveToken(await user.getIdToken() ?? '');
+      await _storage.saveUser(_userToMap(user, name: name, phone: phone));
+
+      return user;
+    } on FirebaseAuthException catch (e) {
+      debugPrint('[AuthService] register error: ${e.code} — ${e.message}');
+      rethrow;
+    } catch (e) {
+      debugPrint('[AuthService] register error: $e');
+      rethrow;
     }
-
-    return {'success': false, 'message': response['message']};
   }
 
-  Future<Map<String, dynamic>> login({
-    required String email,
-    required String password,
-  }) async {
-    final response = await _api.post(
-      '${ApiConfig.authEndpoint}/login',
-      {
-        'email': email,
-        'password': password,
-      },
-    );
-
-    if (response['success']) {
-      final user = User.fromJson(response['data']['user']);
-      final token = response['data']['token'];
-
-      await _storage.saveToken(token);
-      await _storage.saveUser(user);
-
-      return {'success': true, 'user': user};
+  // ── Get current user ───────────────────────────────────────────────────────
+  // ✅ FIX line 73: return Map<String,dynamic>? — consistent with saveUser/getUser types.
+  Future<Map<String, dynamic>?> getCurrentUser() async {
+    try {
+      // Try live Firebase user first
+      final user = _auth.currentUser;
+      if (user != null) {
+        return _userToMap(user);
+      }
+      // Fall back to locally stored user data
+      return await _storage.getUser();
+    } catch (e) {
+      debugPrint('[AuthService] getCurrentUser error: $e');
+      return null;
     }
-
-    return {'success': false, 'message': response['message']};
   }
 
-  Future<User?> getCurrentUser() async {
-    return await _storage.getUser();
-  }
-
+  // ── Logout ─────────────────────────────────────────────────────────────────
   Future<void> logout() async {
-    await _storage.clearAll();
+    try {
+      await _auth.signOut();
+      await _storage.clearSession();
+    } catch (e) {
+      debugPrint('[AuthService] logout error: $e');
+    }
   }
 
-  Future<bool> isAuthenticated() async {
-    final token = await _storage.getToken();
-    return token != null;
+  // ── Reset password ─────────────────────────────────────────────────────────
+  Future<void> resetPassword({required String email}) async {
+    await _auth.sendPasswordResetEmail(email: email.trim());
+  }
+
+  // ── Change password ────────────────────────────────────────────────────────
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    final user = _auth.currentUser;
+    if (user == null || user.email == null) {
+      throw Exception('Not authenticated.');
+    }
+    final credential = EmailAuthProvider.credential(
+      email:    user.email!,
+      password: currentPassword,
+    );
+    await user.reauthenticateWithCredential(credential);
+    await user.updatePassword(newPassword);
+  }
+
+  // ── Auth state stream ──────────────────────────────────────────────────────
+  Stream<User?> get authStateChanges => _auth.authStateChanges();
+
+  // ── Helper: Firebase User → Map ────────────────────────────────────────────
+  // ✅ This is the fix: always convert User to Map<String,dynamic>
+  //    before passing to StorageService.saveUser()
+  static Map<String, dynamic> _userToMap(
+      User user, {
+        String? name,
+        String? phone,
+      }) {
+    return {
+      'uid':          user.uid,
+      'email':        user.email ?? '',
+      'name':         name ?? user.displayName ?? '',
+      'phone':        phone ?? user.phoneNumber ?? '',
+      'photo_url':    user.photoURL ?? '',
+      'email_verified': user.emailVerified,
+    };
   }
 }

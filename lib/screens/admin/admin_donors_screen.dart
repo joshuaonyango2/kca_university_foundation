@@ -5,16 +5,23 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../config/routes.dart';
 import '../../services/receipt_service.dart';
+import '../../services/donor_type_service.dart';
+import 'package:provider/provider.dart';
+import '../../models/role_model.dart';
+import '../../providers/staff_provider.dart';
 import 'widgets/admin_layout.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
 class KCA {
-  static const navy  = Color(0xFF1B2263);
-  static const gold  = Color(0xFFF5A800);
-  static const white = Colors.white;
-  static const bg    = Color(0xFFF0F2F8);
-  static const green = Color(0xFF10B981);
-  static const amber = Color(0xFFF59E0B);
+  static const navy    = Color(0xFF1B2263);
+  static const gold    = Color(0xFFF5A800);
+  static const white   = Colors.white;
+  static const bg      = Color(0xFFF0F2F8);
+  static const green   = Color(0xFF10B981);
+  static const amber   = Color(0xFFF59E0B);
+  static const error   = Color(0xFFDC2626);
+  static const success = Color(0xFF10B981);
+  static const warning = Color(0xFFF59E0B);
 }
 
 class AdminDonorsScreen extends StatefulWidget {
@@ -33,9 +40,21 @@ class _AdminDonorsScreenState extends State<AdminDonorsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final staff = context.watch<StaffProvider>();
+    final canManageDonors = staff.canDo(Permission.manageDonors);
+    final canDeleteDonors = staff.canDo(Permission.deleteDonors);
+
     return AdminLayout(
       title: 'Donors',
       activeRoute: AppRoutes.adminDonors,
+      actions: canManageDonors ? [
+        TextButton.icon(
+          onPressed: () => _showAddDonorDialog(context),
+          icon: const Icon(Icons.person_add, color: Colors.white, size: 18),
+          label: const Text('Add Donor',
+              style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        ),
+      ] : null,
       child: Column(children: [
         // Search + filter
         Padding(
@@ -69,7 +88,9 @@ class _AdminDonorsScreenState extends State<AdminDonorsScreen> {
                 final d     = doc.data() as Map<String, dynamic>;
                 final name  = (d['name']       as String? ?? '').toLowerCase();
                 final email = (d['email']      as String? ?? '').toLowerCase();
-                final type  =  d['donor_type'] as String? ?? '';
+                final rawType = d['donor_type'] as String? ?? '';
+                final type = rawType.isNotEmpty
+                    ? rawType[0].toUpperCase() + rawType.substring(1) : '';
                 final matchSearch = _search.isEmpty || name.contains(_search) || email.contains(_search);
                 final matchType   = _filterType == 'all' || type == _filterType;
                 return matchSearch && matchType;
@@ -92,10 +113,22 @@ class _AdminDonorsScreenState extends State<AdminDonorsScreen> {
                     final data = doc.data() as Map<String, dynamic>;
                     data['id'] = doc.id;
                     return _DonorCard(
-                      data:       data,
-                      onEdit:     () => _showEditDialog(context, data),
-                      onDonate:   () => _showManualDonationDialog(context, data),
-                      onView:     () => _showDetailDialog(context, data),
+                      data:          data,
+                      canManage:     canManageDonors,
+                      canDelete:     canDeleteDonors,
+                      onEdit:        () => _showEditDialog(context, data),
+                      onDonate:      () {
+                        if (!canManageDonors) {
+                          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                              content: Text('You do not have permission to record donations.'),
+                              backgroundColor: Colors.red));
+                          return;
+                        }
+                        _showManualDonationDialog(context, data);
+                      },
+                      onView:        () => _showDetailDialog(context, data),
+                      onDeleteDonor: (id) => _confirmDeleteDonor(context, id,
+                          data['name'] as String? ?? ''),
                     );
                   });
             })),
@@ -115,6 +148,11 @@ class _AdminDonorsScreenState extends State<AdminDonorsScreen> {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)));
 
   // ── Dialogs ───────────────────────────────────────────────────────────────
+  void _showAddDonorDialog(BuildContext ctx) {
+    showDialog(context: ctx, barrierDismissible: false,
+        builder: (_) => _EditDonorDialog(data: const {}));
+  }
+
   void _showEditDialog(BuildContext ctx, Map<String, dynamic> data) {
     showDialog(context: ctx, barrierDismissible: false,
         builder: (_) => _EditDonorDialog(data: data));
@@ -128,19 +166,71 @@ class _AdminDonorsScreenState extends State<AdminDonorsScreen> {
   void _showDetailDialog(BuildContext ctx, Map<String, dynamic> data) {
     showDialog(context: ctx, builder: (_) => _DonorDetailDialog(data: data));
   }
+
+  void _confirmDeleteDonor(BuildContext ctx, String id, String name) {
+    showDialog(
+        context: ctx,
+        builder: (_) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Delete Donor',
+              style: TextStyle(color: KCA.navy, fontWeight: FontWeight.bold)),
+          content: RichText(text: TextSpan(
+              style: const TextStyle(color: Colors.black87, fontSize: 14, height: 1.5),
+              children: [
+                const TextSpan(text: 'Permanently delete '),
+                TextSpan(text: '"$name"',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                const TextSpan(
+                    text: ' from the system?\n\nThis will remove their profile. '
+                        'Donation records are kept for audit purposes.'),
+              ])),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('Cancel', style: TextStyle(color: Colors.grey))),
+            ElevatedButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  await FirebaseFirestore.instance
+                      .collection('donors').doc(id).delete();
+                  if (ctx.mounted) {
+                    ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+                        content: Text('"$name" deleted'),
+                        backgroundColor: KCA.error));
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: KCA.error, foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10))),
+                child: const Text('Delete Permanently')),
+          ],
+        ));
+  }
 }
 
 // ── Donor card ────────────────────────────────────────────────────────────────
 class _DonorCard extends StatelessWidget {
   final Map<String, dynamic> data;
+  final bool canManage, canDelete;
   final VoidCallback onEdit, onDonate, onView;
-  const _DonorCard({required this.data, required this.onEdit, required this.onDonate, required this.onView});
+  final void Function(String id) onDeleteDonor;
+  const _DonorCard({
+    required this.data,
+    required this.canManage,
+    required this.canDelete,
+    required this.onEdit,
+    required this.onDonate,
+    required this.onView,
+    required this.onDeleteDonor,
+  });
 
   @override
   Widget build(BuildContext context) {
     final name  = data['name']       as String? ?? 'Unknown';
     final email = data['email']      as String? ?? '';
-    final type  = data['donor_type'] as String? ?? 'individual';
+    final rawDt = data['donor_type'] as String? ?? 'individual';
+    final type  = rawDt.isNotEmpty ? rawDt[0].toUpperCase() + rawDt.substring(1) : 'Individual';
     final init  = name.isNotEmpty ? name[0].toUpperCase() : 'D';
 
     final typeColor = type == 'corporate' ? KCA.amber : type == 'partner' ? KCA.green : KCA.navy;
@@ -182,15 +272,32 @@ class _DonorCard extends StatelessWidget {
                 }),
           ]),
           trailing: PopupMenuButton<String>(
+
               onSelected: (v) {
                 if (v == 'view')   onView();
                 if (v == 'edit')   onEdit();
                 if (v == 'donate') onDonate();
+                if (v == 'delete') onDeleteDonor(data['id'] as String? ?? '');
               },
-              itemBuilder: (_) => const [
-                PopupMenuItem(value: 'view',   child: Row(children: [Icon(Icons.visibility_outlined,    size: 18, color: KCA.navy), SizedBox(width: 8), Text('View Profile')])),
-                PopupMenuItem(value: 'edit',   child: Row(children: [Icon(Icons.edit_outlined,          size: 18, color: KCA.navy), SizedBox(width: 8), Text('Edit Profile')])),
-                PopupMenuItem(value: 'donate', child: Row(children: [Icon(Icons.add_card_outlined,      size: 18, color: KCA.green), SizedBox(width: 8), Text('Record Manual Donation')])),
+              itemBuilder: (_) => [
+                const PopupMenuItem(value: 'view', child: Row(children: [
+                  Icon(Icons.visibility_outlined, size: 18, color: KCA.navy),
+                  SizedBox(width: 8), Text('View Profile')])),
+                if (canManage) ...[
+                  const PopupMenuItem(value: 'edit', child: Row(children: [
+                    Icon(Icons.edit_outlined, size: 18, color: KCA.navy),
+                    SizedBox(width: 8), Text('Edit Profile')])),
+                  const PopupMenuItem(value: 'donate', child: Row(children: [
+                    Icon(Icons.add_card_outlined, size: 18, color: KCA.green),
+                    SizedBox(width: 8), Text('Record Manual Donation')])),
+                ],
+                if (canDelete) ...[
+                  const PopupMenuDivider(),
+                  const PopupMenuItem(value: 'delete', child: Row(children: [
+                    Icon(Icons.delete_outline, size: 18, color: KCA.error),
+                    SizedBox(width: 8),
+                    Text('Delete Donor', style: TextStyle(color: KCA.error))])),
+                ],
               ]),
           onTap: onView,
         ));
@@ -289,20 +396,33 @@ class _EditDonorDialogState extends State<_EditDonorDialog> {
             _f(_addressCtrl, 'Address', Icons.location_on_outlined),
             const SizedBox(height: 12),
 
-            // Donor type
-            DropdownButtonFormField<String>(
-                value: _donorType,
-                decoration: InputDecoration(labelText: 'Donor Type',
-                    prefixIcon: const Icon(Icons.category_outlined, color: KCA.navy),
-                    filled: true, fillColor: KCA.bg,
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                    labelStyle: const TextStyle(color: KCA.navy)),
-                items: const [
-                  DropdownMenuItem(value: 'individual', child: Text('👤 Individual')),
-                  DropdownMenuItem(value: 'corporate',  child: Text('🏢 Corporate')),
-                  DropdownMenuItem(value: 'partner',    child: Text('🤝 Partner')),
-                ],
-                onChanged: (v) { if (v != null) setState(() => _donorType = v); }),
+            // Donor type — loaded live from Firestore
+            StreamBuilder<List<DonorTypeModel>>(
+                stream: DonorTypeService.activeStream(),
+                builder: (ctx, snap) {
+                  final types = snap.data ?? [];
+                  // Ensure the current value is still valid; fall back to first type
+                  final validValue = types.any((t) => t.id == _donorType)
+                      ? _donorType
+                      : (types.isNotEmpty ? types.first.id : null);
+                  return DropdownButtonFormField<String>(
+                    // ignore: deprecated_member_use
+                    value: validValue,
+                    decoration: InputDecoration(
+                        labelText: 'Donor Type',
+                        prefixIcon: const Icon(Icons.category_outlined, color: KCA.navy),
+                        filled: true, fillColor: KCA.bg,
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none),
+                        labelStyle: const TextStyle(color: KCA.navy)),
+                    items: types.map((t) => DropdownMenuItem(
+                      value: t.id,
+                      child: Text('${t.icon}  ${t.displayName}'),
+                    )).toList(),
+                    onChanged: (v) { if (v != null) setState(() => _donorType = v); },
+                  );
+                }),
           ])))),
 
           Padding(padding: const EdgeInsets.fromLTRB(24, 0, 24, 24), child: Row(children: [
@@ -444,7 +564,8 @@ class _ManualDonationDialogState extends State<_ManualDonationDialog> {
             const SizedBox(height: 12),
 
             // Payment method
-            DropdownButtonFormField<String>(value: _method,
+            DropdownButtonFormField<String>(// ignore: deprecated_member_use
+                value: _method,
                 decoration: InputDecoration(labelText: 'Payment Method',
                     prefixIcon: const Icon(Icons.account_balance_wallet_outlined, color: KCA.navy),
                     filled: true, fillColor: KCA.bg,
@@ -469,6 +590,7 @@ class _ManualDonationDialogState extends State<_ManualDonationDialog> {
                 builder: (ctx, snap) {
                   final campaigns = snap.data?.docs ?? [];
                   return DropdownButtonFormField<String>(
+                    // ignore: deprecated_member_use
                       value: _campaignId,
                       decoration: InputDecoration(labelText: 'Campaign (optional)',
                           prefixIcon: const Icon(Icons.campaign_outlined, color: KCA.navy),
@@ -530,7 +652,8 @@ class _DonorDetailDialog extends StatelessWidget {
     final name  = data['name']       as String? ?? 'Unknown';
     final email = data['email']      as String? ?? '';
     final phone = data['phone']      as String? ?? '—';
-    final type  = data['donor_type'] as String? ?? 'individual';
+    final rawDt = data['donor_type'] as String? ?? 'individual';
+    final type  = rawDt.isNotEmpty ? rawDt[0].toUpperCase() + rawDt.substring(1) : 'Individual';
     final org   = data['organization'] as String? ?? '';
     final init  = name.isNotEmpty ? name[0].toUpperCase() : 'D';
 

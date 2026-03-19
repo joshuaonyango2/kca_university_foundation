@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../config/routes.dart';
 import '../../models/role_model.dart';
 import '../../providers/staff_provider.dart';
+import '../../services/permission_service.dart';
 import 'widgets/admin_layout.dart';
 
 // ── Brand tokens ──────────────────────────────────────────────────────────────
@@ -149,18 +150,19 @@ class AdminRolesScreen extends StatelessWidget {
               const EdgeInsets.symmetric(horizontal: 14, vertical: 10)),
         ),
         const SizedBox(width: 10),
-        ElevatedButton.icon(
-          onPressed: () => _openCreate(context),
-          icon: const Icon(Icons.add, size: 18),
-          label: const Text('New Role'),
-          style: ElevatedButton.styleFrom(
-              backgroundColor: _KCA.navy,
-              foregroundColor: _KCA.white,
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10)),
-              padding:
-              const EdgeInsets.symmetric(horizontal: 16, vertical: 10)),
-        ),
+        if (context.watch<StaffProvider>().canDo(Permission.manageRoles))
+          ElevatedButton.icon(
+            onPressed: () => _openCreate(context),
+            icon: const Icon(Icons.add, size: 18),
+            label: const Text('New Role'),
+            style: ElevatedButton.styleFrom(
+                backgroundColor: _KCA.navy,
+                foregroundColor: _KCA.white,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10)),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 10)),
+          ),
       ],
       child: StreamBuilder<List<RoleModel>>(
         stream: context.read<StaffProvider>().rolesStream(),
@@ -189,7 +191,15 @@ class AdminRolesScreen extends StatelessWidget {
                 barrierDismissible: false,
                 builder: (_) => _RoleFormDialog(role: roles[i]),
               ),
-              onDelete: () => _confirmDelete(context, roles[i]),
+              onDelete: () {
+                if (!context.read<StaffProvider>().canDo(Permission.manageRoles)) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                      content: Text('You need Manage Roles permission to delete roles.'),
+                      backgroundColor: Colors.red));
+                  return;
+                }
+                _confirmDelete(context, roles[i]);
+              },
             ),
           );
         },
@@ -940,9 +950,19 @@ class _RoleFormDialogState extends State<_RoleFormDialog> {
   }
 
   // ── Select all / none ─────────────────────────────────────────────────────
-  void _selectAll()  => setState(() =>
+  void _selectAll() => setState(() =>
       _selected.addAll(Permission.values.map((p) => p.key)));
-  void _clearAll()   => setState(() => _selected.clear());
+  void _clearAll()  => setState(() => _selected.clear());
+
+  // All permissions can be assigned to a role, but that still does not make
+  // the user a "super admin". Super-admin status is a Firestore-level
+  // protection flag (is_super_admin: true) that is set only for
+  // admin@kca.ac.ke / foundation@kca.ac.ke by PermissionService at login.
+  // No action in this screen can create another super-admin.
+  static const _kNoSuperAdminNote =
+      'Assigning all permissions to a role gives that role holder full '
+      'operational access. It does not grant super-admin status — protected '
+      'system accounts cannot be modified by any role, including this one.';
 
   InputDecoration _dec(String label, IconData icon) => InputDecoration(
       labelText: label,
@@ -965,6 +985,7 @@ class _RoleFormDialogState extends State<_RoleFormDialog> {
     }
     final totalSelected = _selected.length;
     final totalPerms    = Permission.values.length;
+    final allSelected   = totalSelected == totalPerms;
 
     return Dialog(
       shape: RoundedRectangleBorder(

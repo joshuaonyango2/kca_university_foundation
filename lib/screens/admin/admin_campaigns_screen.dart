@@ -8,6 +8,10 @@ import 'package:image_picker/image_picker.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../../config/routes.dart';
 import '../../services/story_media_service.dart';
+import '../../services/category_service.dart';
+import 'package:provider/provider.dart';
+import '../../models/role_model.dart';
+import '../../providers/staff_provider.dart';
 import 'widgets/admin_layout.dart';
 
 // ── Palette ───────────────────────────────────────────────────────────────────
@@ -144,8 +148,26 @@ class _AdminCampaignsScreenState extends State<AdminCampaignsScreen> {
                   return _CampaignCard(
                     id: doc.id,
                     data: data,
-                    onEdit:   () => _openForm(context, id: doc.id, data: data),
-                    onDelete: () => _confirmDelete(context, doc.id, data['title'] as String? ?? ''),
+                    onEdit:   () {
+                      final staff = context.read<StaffProvider>();
+                      if (!staff.canDo(Permission.manageCampaigns)) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text('You do not have permission to edit campaigns.'),
+                            backgroundColor: Colors.red));
+                        return;
+                      }
+                      _openForm(context, id: doc.id, data: data);
+                    },
+                    onDelete: () {
+                      final staff = context.read<StaffProvider>();
+                      if (!staff.canDo(Permission.manageCampaigns)) {
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                            content: Text('You do not have permission to delete campaigns.'),
+                            backgroundColor: Colors.red));
+                        return;
+                      }
+                      _confirmDelete(context, doc.id, data['title'] as String? ?? '');
+                    },
                     onToggle: () => _toggleStatus(doc.id, data['is_active'] as bool? ?? false),
                   );
                 },
@@ -400,6 +422,8 @@ class _CampaignFormDialogState extends State<_CampaignFormDialog> {
   final _endDateCtrl = TextEditingController();
 
   String? _category;
+  String? _subcategory;
+  List<CampaignCategory> _categories = [];  // loaded from Firestore
   bool    _isActive  = true;
   bool    _isLoading = false;
   bool get _isEdit   => widget.id != null;
@@ -410,14 +434,11 @@ class _CampaignFormDialogState extends State<_CampaignFormDialog> {
   // Stories: each map holds name/role/story text + media fields
   final List<Map<String, dynamic>> _stories    = [];
 
-  static const _categories = [
-    'Scholarships', 'Infrastructure', 'Research',
-    'Community', 'Health', 'Technology', 'Other',
-  ];
 
   @override
   void initState() {
     super.initState();
+    _loadCategories();
     final d = widget.data;
     if (d != null) {
       _titleCtrl.text   = d['title']       as String? ?? '';
@@ -425,6 +446,7 @@ class _CampaignFormDialogState extends State<_CampaignFormDialog> {
       _goalCtrl.text    = '${d['goal'] ?? ''}';
       _endDateCtrl.text = d['end_date']    as String? ?? '';
       _category         = d['category']   as String?;
+      _subcategory      = d['subcategory'] as String?;
       _isActive         = d['is_active']  as bool?   ?? true;
 
       // Load impact metrics
@@ -476,6 +498,11 @@ class _CampaignFormDialogState extends State<_CampaignFormDialog> {
     super.dispose();
   }
 
+  Future<void> _loadCategories() async {
+    final cats = await CategoryService.fetch();
+    if (mounted) setState(() => _categories = cats);
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _isLoading = true);
@@ -485,6 +512,7 @@ class _CampaignFormDialogState extends State<_CampaignFormDialog> {
       'description':    _descCtrl.text.trim(),
       'goal':           double.tryParse(_goalCtrl.text.trim()) ?? 0,
       'category':       _category ?? 'Other',
+      'subcategory':    _subcategory,
       'end_date':       _endDateCtrl.text.trim(),
       'is_active':      _isActive,
       'impact_metrics': _metrics.map((m) => Map<String, dynamic>.from(m)).toList(),
@@ -602,21 +630,69 @@ class _CampaignFormDialogState extends State<_CampaignFormDialog> {
                             return null;
                           }),
                       const SizedBox(height: 14),
-                      DropdownButtonFormField<String>(
-                        value: _category,
-                        decoration: _dec('Category *', Icons.category),
-                        hint: const Text('Select campaign category'),
-                        items: _categories.map((c) => DropdownMenuItem(
-                          value: c,
+                      // ── Category (from Firestore) ──────────────────────────
+                      _categories.isEmpty
+                          ? Container(
+                          padding: const EdgeInsets.all(14),
+                          decoration: BoxDecoration(
+                              color: KCA.bg, borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: Colors.grey[300]!)),
                           child: Row(children: [
-                            Icon(_catIcon(c), size: 16, color: KCA.navy),
+                            const SizedBox(width: 14, height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: KCA.navy)),
+                            const SizedBox(width: 10),
+                            Text('Loading categories…',
+                                style: TextStyle(color: Colors.grey[500], fontSize: 13)),
+                          ]))
+                          : DropdownButtonFormField<String>(
+                        value: _categories.any((c) => c.name == _category)
+                            ? _category : null,
+                        decoration: _dec('Category *', Icons.category_outlined),
+                        hint: const Text('Select campaign category'),
+                        isExpanded: true,
+                        items: _categories.map((cat) => DropdownMenuItem(
+                          value: cat.name,
+                          child: Row(children: [
+                            Container(
+                                padding: const EdgeInsets.all(4),
+                                decoration: BoxDecoration(
+                                    color: cat.color.withAlpha(20),
+                                    borderRadius: BorderRadius.circular(6)),
+                                child: Icon(cat.icon, size: 16, color: cat.color)),
                             const SizedBox(width: 8),
-                            Text(c),
+                            Flexible(child: Text(cat.name,
+                                overflow: TextOverflow.ellipsis)),
                           ]),
                         )).toList(),
-                        onChanged: (v) => setState(() => _category = v),
+                        onChanged: (v) => setState(() {
+                          _category    = v;
+                          _subcategory = null; // reset when category changes
+                        }),
                         validator: (v) => v == null ? 'Please select a category' : null,
                       ),
+                      // ── Subcategory (shown only when the selected category has subcategories)
+                      Builder(builder: (ctx) {
+                        final cat = _categories.where(
+                                (c) => c.name == _category).firstOrNull;
+                        if (cat == null || !cat.hasSubcategories) {
+                          return const SizedBox.shrink();
+                        }
+                        return Column(children: [
+                          const SizedBox(height: 14),
+                          DropdownButtonFormField<String>(
+                            value: cat.subcategories.contains(_subcategory)
+                                ? _subcategory : null,
+                            decoration: _dec('Subcategory (optional)',
+                                Icons.subdirectory_arrow_right_outlined),
+                            hint: const Text('Select subcategory'),
+                            isExpanded: true,
+                            items: cat.subcategories.map((sub) =>
+                                DropdownMenuItem(value: sub,
+                                    child: Text(sub, overflow: TextOverflow.ellipsis))).toList(),
+                            onChanged: (v) => setState(() => _subcategory = v),
+                          ),
+                        ]);
+                      }),
                       const SizedBox(height: 14),
                       TextFormField(
                         controller: _endDateCtrl,
@@ -1310,13 +1386,14 @@ class _StoryDialogState extends State<_StoryDialog>
   String _videoUrl  = '';
 
   // Upload state
+  bool   _selecting = false;  // true while file picker dialog is open
   bool   _uploading = false;
   double _progress  = 0;
   String _uploadMsg = '';
 
   // Local preview
-  Uint8List? _photoPreview;
-  String     _videoFileName = '';
+  Uint8List?   _photoPreview;
+  PickedMedia? _pickedVideo;   // holds picked video until upload completes
 
   @override
   void initState() {
@@ -1351,49 +1428,91 @@ class _StoryDialogState extends State<_StoryDialog>
 
   // ── Pick & upload photo ─────────────────────────────────────────────────
   Future<void> _pickPhoto({bool fromCamera = false}) async {
+    // Show "selecting" state immediately so the UI doesn't look frozen
+    setState(() { _selecting = true; _uploadMsg = ''; });
     final file = await StoryMediaService.pickPhoto(fromCamera: fromCamera);
-    if (file == null) return;
+    if (!mounted) return;
+    if (file == null) {
+      setState(() => _selecting = false);
+      return;
+    }
     final bytes = await file.readAsBytes();
-    setState(() { _photoPreview = bytes; _uploading = true;
-    _uploadMsg = 'Uploading photo…'; _progress = 0; });
+    if (bytes.length > 5 * 1024 * 1024) {
+      setState(() {
+        _selecting = false;
+        _uploadMsg = '✗ Photo too large — max 5 MB';
+      });
+      return;
+    }
+    setState(() {
+      _selecting    = false;
+      _photoPreview = bytes;
+      _uploading    = true;
+      _uploadMsg    = 'Uploading photo…';
+      _progress     = 0;
+    });
     final url = await StoryMediaService.uploadStoryPhoto(
       campaignId:  widget.campaignId,
       storyIndex:  widget.storyIndex,
       file:        file,
-      onProgress:  (p) => setState(() => _progress = p),
+      onProgress:  (p) { if (mounted) setState(() => _progress = p); },
     );
+    if (!mounted) return;
     setState(() {
       _uploading = false;
       if (url != null) {
         _photoUrl  = url;
         _mediaType = 'photo';
-        _uploadMsg = '✓ Photo uploaded';
+        _uploadMsg = '✓ Photo uploaded successfully';
       } else {
-        _uploadMsg = '✗ Upload failed — try again';
+        _uploadMsg = '✗ Upload failed — check connection and try again';
       }
     });
   }
 
   // ── Pick & upload video ─────────────────────────────────────────────────
   Future<void> _pickVideo() async {
-    final file = await StoryMediaService.pickVideo();
-    if (file == null) return;
-    setState(() { _videoFileName = file.name; _uploading = true;
-    _uploadMsg = 'Uploading video…'; _progress = 0; });
+    // Show feedback immediately — picker dialog can take a few seconds to open
+    setState(() { _selecting = true; _uploadMsg = ''; _pickedVideo = null; });
+    final media = await StoryMediaService.pickVideo();
+    if (!mounted) return;
+    if (media == null) {
+      setState(() => _selecting = false);
+      return;
+    }
+    // Size validation before uploading
+    if (media.isTooBig) {
+      setState(() {
+        _selecting = false;
+        _uploadMsg = '✗ Video too large (${media.sizeLabel}) — max 150 MB.'
+            ' Use YouTube URL instead for larger videos.';
+      });
+      return;
+    }
+    setState(() {
+      _selecting     = false;
+      _pickedVideo   = media;
+      _uploading     = true;
+      _uploadMsg     = 'Uploading ${media.sizeLabel}…';
+      _progress      = 0;
+    });
     final url = await StoryMediaService.uploadStoryVideo(
       campaignId:  widget.campaignId,
       storyIndex:  widget.storyIndex,
-      file:        file,
-      onProgress:  (p) => setState(() => _progress = p),
+      media:       media,
+      onProgress:  (p) { if (mounted) setState(() => _progress = p); },
     );
+    if (!mounted) return;
     setState(() {
       _uploading = false;
       if (url != null) {
         _videoUrl  = url;
         _mediaType = 'video';
-        _uploadMsg = '✓ Video uploaded';
+        _uploadMsg = '✓ Video uploaded successfully';
       } else {
-        _uploadMsg = '✗ Upload failed — try again';
+        _pickedVideo = null;
+        _uploadMsg = '✗ Upload failed — check your connection and try again.\n'
+            'Tip: for large videos, paste a YouTube URL instead.';
       }
     });
   }
@@ -1411,13 +1530,16 @@ class _StoryDialogState extends State<_StoryDialog>
 
   void _clearMedia() {
     setState(() {
-      _mediaType    = 'none';
-      _photoUrl     = '';
-      _videoUrl     = '';
+      _mediaType   = 'none';
+      _photoUrl    = '';
+      _videoUrl    = '';
       _photoPreview = null;
-      _videoFileName = '';
+      _pickedVideo = null;
+      _selecting   = false;
+      _uploading   = false;
       _urlCtrl.clear();
-      _uploadMsg    = '';
+      _uploadMsg   = '';
+      _progress    = 0;
     });
   }
 
@@ -1635,26 +1757,44 @@ class _StoryDialogState extends State<_StoryDialog>
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.grey[300]!)),
                   child: Column(children: [
-                    if (_videoFileName.isNotEmpty)
+                    if (_pickedVideo != null)
                       Padding(
                         padding: const EdgeInsets.only(bottom: 10),
                         child: Row(children: [
                           const Icon(Icons.video_file_outlined,
                               color: KCA.navy, size: 20),
                           const SizedBox(width: 8),
-                          Expanded(child: Text(_videoFileName,
+                          Expanded(child: Text(_pickedVideo?.name ?? '',
                               style: const TextStyle(fontWeight: FontWeight.w600,
                                   fontSize: 13, color: KCA.navy),
                               overflow: TextOverflow.ellipsis)),
                         ]),
                       ),
-                    _mediaBtn(
-                      icon: Icons.video_library_outlined,
-                      label: _videoFileName.isEmpty
-                          ? 'Pick video from device'
-                          : 'Change video',
-                      onTap: _uploading ? null : _pickVideo,
-                    ),
+                    if (_selecting)
+                      Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(vertical: 16),
+                          decoration: BoxDecoration(
+                              color: KCA.navy.withAlpha(8),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(color: KCA.navy.withAlpha(30))),
+                          child: const Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+                            SizedBox(width: 18, height: 18,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: KCA.navy)),
+                            SizedBox(width: 10),
+                            Text('Opening file picker…',
+                                style: TextStyle(color: KCA.navy,
+                                    fontWeight: FontWeight.w600, fontSize: 13)),
+                          ]))
+                    else
+                      _mediaBtn(
+                        icon: Icons.video_library_outlined,
+                        label: _pickedVideo == null
+                            ? 'Pick video from device'
+                            : 'Change video  (${_pickedVideo!.sizeLabel})',
+                        onTap: _uploading ? null : _pickVideo,
+                      ),
                     if (_uploading) ...[
                       const SizedBox(height: 12),
                       _uploadProgress(),

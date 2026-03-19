@@ -1,5 +1,6 @@
 // lib/providers/staff_provider.dart
 
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -8,24 +9,45 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:http/http.dart' as http;
 import '../models/staff_model.dart';
 import '../models/role_model.dart';
+import '../services/permission_service.dart';
 
 class StaffProvider extends ChangeNotifier {
   final _firestore = FirebaseFirestore.instance;
   final _auth      = FirebaseAuth.instance;
 
-  List<StaffModel> _staff     = [];
-  List<RoleModel>  _roles     = [];
-  bool             _isLoading = false;
+  List<StaffModel> _staff        = [];
+  List<RoleModel>  _roles        = [];
+  bool             _isLoading    = false;
   String?          _error;
+  AdminContext     _adminContext  = AdminContext.empty;
+  StreamSubscription<AdminContext>? _ctxSub;
 
-  List<StaffModel> get staff     => _staff;
-  List<RoleModel>  get roles     => _roles;
-  bool             get isLoading => _isLoading;
-  String?          get error     => _error;
+  List<StaffModel> get staff        => _staff;
+  List<RoleModel>  get roles        => _roles;
+  bool             get isLoading    => _isLoading;
+  String?          get error        => _error;
+  AdminContext     get adminContext  => _adminContext;
+
+  /// Shorthand: can the currently-signed-in admin perform [p]?
+  bool canDo(Permission p) => _adminContext.can(p);
 
   StaffProvider() {
-    // Seed default roles on startup (idempotent)
     bootstrapRoles();
+    _subscribeToContext();
+  }
+
+  void _subscribeToContext() {
+    _ctxSub?.cancel();
+    _ctxSub = PermissionService.contextStream().listen((ctx) {
+      _adminContext = ctx;
+      notifyListeners();
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctxSub?.cancel();
+    super.dispose();
   }
 
   // ── Bootstrap default roles ────────────────────────────────────────────────
@@ -154,6 +176,7 @@ class StaffProvider extends ChangeNotifier {
     String             phone = '',
   }) async {
     // ── Step A: REST API sign-up ───────────────────────────────────────────
+    _tempPassword = tempPassword; // stored for _writeStaffDoc
     final restResult = await _createAuthViaRest(email: email, password: tempPassword);
 
     if (restResult.success) {
@@ -333,6 +356,8 @@ class StaffProvider extends ChangeNotifier {
   }
 
   // ── Write staff Firestore document ─────────────────────────────────────────
+  String _tempPassword = '';   // held briefly during onboarding, then cleared
+
   Future<void> _writeStaffDoc({
     required String    uid,
     required String    name,
@@ -343,18 +368,20 @@ class StaffProvider extends ChangeNotifier {
     String             phone = '',
   }) async {
     await _firestore.collection('staff').doc(uid).set({
-      'id':          uid,
-      'name':        name,
-      'email':       email,
-      'role_id':     role.id,
-      'role_name':   role.name,
-      'permissions': role.permissions,
-      'is_admin':    isAdmin,
-      'is_active':   true,
-      'created_at':  DateTime.now().toIso8601String(),
-      'created_by':  createdBy,
-      'phone':       phone,
-      'department':  role.name,
+      'id':                  uid,
+      'name':                name,
+      'email':               email,
+      'role_id':             role.id,
+      'role_name':           role.name,
+      'permissions':         role.permissions,
+      'is_admin':            isAdmin,
+      'is_active':           true,
+      'created_at':          DateTime.now().toIso8601String(),
+      'created_by':          createdBy,
+      'phone':               phone,
+      'department':          role.name,
+      'temp_password':       _tempPassword,       // cleared when user changes pwd
+      'is_password_changed': false,               // set to true on first password change
     }, SetOptions(merge: true));
   }
 

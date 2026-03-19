@@ -133,6 +133,24 @@ class _AdminReportsScreenState extends State<AdminReportsScreen>
 
   String _mon(int m) => ['','Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][m.clamp(1,12)];
 
+  /// New donors who joined each month, last 12 months.
+  List<Map<String, dynamic>> get _donorGrowth {
+    final now = DateTime.now();
+    return List.generate(12, (i) {
+      final m = DateTime(now.year, now.month - (11 - i));
+      int count = 0;
+      for (final d in _donors) {
+        final raw = d['created_at'];
+        DateTime? dt;
+        if (raw is String) dt = DateTime.tryParse(raw);
+        if (raw is Map)    dt = DateTime.tryParse(raw['_seconds']?.toString() ?? '');
+        if (dt != null && dt.month == m.month && dt.year == m.year) count++;
+      }
+      // cumulative
+      return {'month': _mon(m.month), 'new': count};
+    });
+  }
+
   // Campaign performance
   List<Map<String, dynamic>> get _campPerf {
     return (_campaigns.map((c) {
@@ -281,6 +299,12 @@ class _AdminReportsScreenState extends State<AdminReportsScreen>
             ]);
           }),
         ])),
+        const SizedBox(height: 24),
+
+        // ── Donor growth chart (last 12 months) ───────────────────────
+        _section('New Donors — Last 12 Months'),
+        const SizedBox(height: 12),
+        _card(child: _DonorGrowthChart(data: _donorGrowth)),
       ]),
     );
   }
@@ -685,4 +709,179 @@ class _ExportButton extends StatelessWidget {
       ],
     );
   }
+}
+
+// ── Donor Growth Line Chart (pure Flutter — no external chart library) ────────
+class _DonorGrowthChart extends StatelessWidget {
+  final List<Map<String, dynamic>> data;
+  const _DonorGrowthChart({required this.data});
+
+  @override
+  Widget build(BuildContext context) {
+    final counts = data.map((m) => (m['new'] as int).toDouble()).toList();
+    final maxVal = counts.fold(0.0, (a, b) => a > b ? a : b);
+    final total  = counts.fold(0.0, (a, b) => a + b);
+
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        _kpi('${total.toInt()}', 'New Donors (12m)',
+            Icons.person_add_outlined, const Color(0xFF1B2263)),
+        const SizedBox(width: 16),
+        _kpi(
+          '${counts.last.toInt()}',
+          'This Month',
+          Icons.trending_up,
+          const Color(0xFF10B981),
+        ),
+        const SizedBox(width: 16),
+        _kpi(
+          '${counts.isEmpty ? 0 : (total / 12).toStringAsFixed(1)}',
+          'Monthly Avg',
+          Icons.bar_chart,
+          const Color(0xFFF59E0B),
+        ),
+      ]),
+      const SizedBox(height: 24),
+
+      // Line chart area
+      SizedBox(
+          height: 180,
+          child: CustomPaint(
+            painter: _GrowthPainter(
+                counts: counts, maxVal: maxVal.clamp(1.0, double.infinity)),
+            child: const SizedBox.expand(),
+          )),
+      const SizedBox(height: 8),
+
+      // X-axis labels
+      Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: data.map((m) => Text(m['month'] as String,
+              style: TextStyle(
+                  fontSize: 9, color: Colors.grey[500]))).toList()),
+      const SizedBox(height: 16),
+
+      // Data table
+      const Divider(),
+      const SizedBox(height: 8),
+      const Text('Monthly Breakdown',
+          style: TextStyle(fontWeight: FontWeight.bold,
+              fontSize: 13, color: Color(0xFF1B2263))),
+      const SizedBox(height: 8),
+      ...data.asMap().entries.map((e) {
+        final i     = e.key;
+        final m     = e.value;
+        final count = m['new'] as int;
+        final frac  = maxVal == 0
+            ? 0.0 : count / maxVal;
+        return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 3),
+            child: Row(children: [
+              SizedBox(width: 36,
+                  child: Text(m['month'] as String,
+                      style: TextStyle(fontSize: 11,
+                          color: Colors.grey[500]))),
+              const SizedBox(width: 8),
+              Expanded(child: ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                      value: frac.clamp(0.0, 1.0),
+                      minHeight: 10,
+                      color: const Color(0xFF1B2263),
+                      backgroundColor: Colors.grey[100]))),
+              const SizedBox(width: 10),
+              SizedBox(width: 24, child: Text('$count',
+                  textAlign: TextAlign.right,
+                  style: const TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.bold))),
+            ]));
+      }),
+    ]);
+  }
+
+  Widget _kpi(String v, String l, IconData icon, Color color) =>
+      Expanded(child: Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+              color: color.withAlpha(15),
+              borderRadius: BorderRadius.circular(10)),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Icon(icon, color: color, size: 18),
+                const SizedBox(height: 6),
+                Text(v, style: TextStyle(
+                    color: color, fontSize: 20,
+                    fontWeight: FontWeight.bold)),
+                Text(l, style: TextStyle(
+                    color: Colors.grey[600], fontSize: 10)),
+              ])));
+}
+
+class _GrowthPainter extends CustomPainter {
+  final List<double> counts;
+  final double maxVal;
+  const _GrowthPainter({required this.counts, required this.maxVal});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (counts.isEmpty) return;
+    const navy = Color(0xFF1B2263);
+    const gold = Color(0xFFF5A800);
+
+    final linePaint = Paint()
+      ..color  = navy
+      ..strokeWidth = 2.5
+      ..style  = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final fillPaint = Paint()
+      ..shader = LinearGradient(
+          colors: [navy.withAlpha(60), navy.withAlpha(0)],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter)
+          .createShader(Rect.fromLTWH(0, 0, size.width, size.height))
+      ..style = PaintingStyle.fill;
+
+    final n      = counts.length;
+    final xStep  = size.width / (n - 1);
+
+    List<Offset> pts = [];
+    for (int i = 0; i < n; i++) {
+      final x = i * xStep;
+      final y = size.height - (counts[i] / maxVal) * size.height;
+      pts.add(Offset(x, y));
+    }
+
+    // Fill path
+    final fillPath = Path()..moveTo(pts.first.dx, size.height);
+    for (final p in pts) {
+      fillPath.lineTo(p.dx, p.dy);
+    }
+    fillPath.lineTo(pts.last.dx, size.height);
+    fillPath.close();
+    canvas.drawPath(fillPath, fillPaint);
+
+    // Line
+    final linePath = Path()..moveTo(pts.first.dx, pts.first.dy);
+    for (int i = 1; i < pts.length; i++) {
+      // Smooth curve
+      final prev = pts[i - 1];
+      final curr = pts[i];
+      final cpx  = (prev.dx + curr.dx) / 2;
+      linePath.cubicTo(cpx, prev.dy, cpx, curr.dy, curr.dx, curr.dy);
+    }
+    canvas.drawPath(linePath, linePaint);
+
+    // Dots
+    final dotPaint = Paint()..color = gold ..style = PaintingStyle.fill;
+    final dotBorder = Paint()
+      ..color = navy ..style = PaintingStyle.stroke ..strokeWidth = 2;
+    for (final p in pts) {
+      canvas.drawCircle(p, 4, dotPaint);
+      canvas.drawCircle(p, 4, dotBorder);
+    }
+  }
+
+  @override
+  bool shouldRepaint(_GrowthPainter old) => old.counts != counts;
 }

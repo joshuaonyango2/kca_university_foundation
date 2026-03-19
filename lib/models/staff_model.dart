@@ -28,7 +28,9 @@ class StaffModel {
   });
 
   bool hasPermission(String permissionKey) =>
-      isAdmin || permissions.contains(permissionKey);
+      permissions.contains(permissionKey);
+  // Note: is_admin flag controls dashboard access only.
+  // All permission checks go through the permissions[] list — no bypass.
 
   String get initials {
     final parts = name.split(' ');

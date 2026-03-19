@@ -1,92 +1,120 @@
 // firestore.rules
+// KCA University Foundation — Firestore Security Rules
+// Updated: full rules for all collections including new features
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    function isAdmin() {
-      return request.auth != null && (
-        // Hard-coded admin emails always have full access
-        request.auth.token.email == 'admin@kca.ac.ke' ||
-        request.auth.token.email == 'foundation@kca.ac.ke' ||
-        // Staff members with is_admin flag set in their staff doc
-        (exists(/databases/$(database)/documents/staff/$(request.auth.uid)) &&
-         get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.is_admin == true)
-      );
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    function isAuth()       { return request.auth != null; }
+    function uid()          { return request.auth.uid; }
+    function isAdmin()      { return isAuth() && (
+      request.auth.token.email == 'admin@kca.ac.ke' ||
+      request.auth.token.email == 'foundation@kca.ac.ke'
+    ); }
+    function isStaff()      { return isAuth() &&
+      exists(/databases/$(database)/documents/staff/$(uid())); }
+    function isAdminOrStaff() { return isAdmin() || isStaff(); }
+    function ownsDoc(id)    { return isAuth() && uid() == id; }
+
+    // ── Campaign categories (public read) ─────────────────────────────────
+    match /campaign_categories/{id} {
+      allow read:   if true;
+      allow write:  if isAdminOrStaff();
     }
 
-    function isStaff() { return request.auth != null; }
-
-    function staffHasPermission(perm) {
-      return isAdmin() ||
-             (isStaff() &&
-              exists(/databases/$(database)/documents/staff/$(request.auth.uid)) &&
-              perm in get(/databases/$(database)/documents/staff/$(request.auth.uid)).data.permissions);
+    // ── Donor types (public read) ─────────────────────────────────────────
+    match /donor_types/{id} {
+      allow read:   if true;
+      allow write:  if isAdminOrStaff();
     }
 
-    // ── Donors ────────────────────────────────────────────────────────────────
-    match /donors/{userId} {
-      allow read:   if request.auth != null && (request.auth.uid == userId || isAdmin() || staffHasPermission('view_donors'));
-      allow write:  if request.auth != null && (request.auth.uid == userId || isAdmin() || staffHasPermission('manage_donors'));
+    // ── Payment methods (public read for active) ──────────────────────────
+    match /payment_methods/{id} {
+      allow read:   if true;
+      allow write:  if isAdminOrStaff();
     }
 
-    // ── Campaigns ─────────────────────────────────────────────────────────────
-    match /campaigns/{campaignId} {
-      allow read:   if request.auth != null;
-      allow write:  if isAdmin() || staffHasPermission('manage_campaigns');
+    // ── Donation amounts (public read) ────────────────────────────────────
+    match /donation_amounts/{id} {
+      allow read:   if true;
+      allow write:  if isAdminOrStaff();
     }
 
-    // ── Donations ─────────────────────────────────────────────────────────────
-    match /donations/{donationId} {
-      allow create: if request.auth != null;
-      allow read:   if request.auth != null && (request.auth.uid == resource.data.donor_id || isAdmin() || staffHasPermission('view_transactions'));
-      allow update: if isAdmin() || staffHasPermission('manage_donors');
+    // ── Campaigns (public read) ───────────────────────────────────────────
+    match /campaigns/{id} {
+      allow read:   if true;
+      allow create: if isAdminOrStaff();
+      allow update: if isAdminOrStaff()
+                    || (isAuth()
+                        && request.resource.data.keys().hasOnly(['raised']));
       allow delete: if isAdmin();
     }
 
-    // ── Receipts ──────────────────────────────────────────────────────────────
-    match /receipts/{receiptId} {
-      allow create: if request.auth != null;
-      allow read:   if request.auth != null && (resource.data.donor_id == request.auth.uid || isAdmin() || staffHasPermission('view_transactions'));
-      allow update, delete: if isAdmin();
-    }
-
-    // ── Notifications ─────────────────────────────────────────────────────────
-    match /notifications/{notifId} {
-      allow create: if isAdmin() || staffHasPermission('manage_staff');
-      allow read:   if request.auth != null && (resource.data.recipient_id == request.auth.uid || resource.data.recipient_id == 'all' || isAdmin());
-      allow update: if request.auth != null && resource.data.recipient_id == request.auth.uid;
+    // ── Donors ────────────────────────────────────────────────────────────
+    match /donors/{donorId} {
+      allow read:   if ownsDoc(donorId) || isAdminOrStaff();
+      allow create: if isAuth() && uid() == donorId;
+      allow update: if ownsDoc(donorId) || isAdminOrStaff();
       allow delete: if isAdmin();
     }
 
-    // ── FCM Tokens ────────────────────────────────────────────────────────────
-    match /fcm_tokens/{uid} {
-      allow read, write: if request.auth != null && request.auth.uid == uid;
-      allow read:        if isAdmin();
+    // ── Donations ─────────────────────────────────────────────────────────
+    match /donations/{id} {
+      allow read:   if isAuth() &&
+                       (resource.data.donor_id == uid()
+                        || isAdminOrStaff());
+      allow create: if isAuth();
+      allow update: if isAdminOrStaff();
+      allow delete: if isAdmin();
     }
 
-    // ── Staff ─────────────────────────────────────────────────────────────────
-    // Admins can fully manage staff docs.
-    // Staff can read and update their own doc (e.g. profile edits).
+    // ── Receipts ──────────────────────────────────────────────────────────
+    match /receipts/{id} {
+      allow read:   if isAuth() &&
+                       (resource.data.donor_email == request.auth.token.email
+                        || isAdminOrStaff());
+      allow create: if isAuth();
+      allow update: if isAdminOrStaff();
+      allow delete: if isAdmin();
+    }
+
+    // ── Notifications ─────────────────────────────────────────────────────
+    match /notifications/{id} {
+      // Donors: read/update their own + anything addressed to 'all'
+      allow read:   if isAuth() &&
+                       (resource.data.recipient_id == uid()
+                        || resource.data.recipient_id == 'all'
+                        || isAdminOrStaff());
+      allow create: if isAuth();
+      allow update: if isAuth() &&
+                       (resource.data.recipient_id == uid()
+                        || isAdminOrStaff());
+      allow delete: if isAdmin();
+    }
+
+    // ── Staff ─────────────────────────────────────────────────────────────
     match /staff/{staffId} {
-      allow read:   if isAdmin() || staffHasPermission('manage_staff') || request.auth.uid == staffId;
-      allow create: if isAdmin() || staffHasPermission('manage_staff');
-      allow update: if isAdmin() || staffHasPermission('manage_staff') || request.auth.uid == staffId;
+      allow read:   if ownsDoc(staffId) || isAdminOrStaff();
+      allow create: if isAdmin();
+      allow update: if ownsDoc(staffId) || isAdmin();
       allow delete: if isAdmin();
     }
 
-    // ── Roles ─────────────────────────────────────────────────────────────────
-    // ANY authenticated user can read roles (needed for role selector in Add Admin form).
-    // Only admins / authorised staff can write.
-    match /roles/{roleId} {
-      allow read:   if request.auth != null;
-      allow create: if isAdmin() || staffHasPermission('manage_roles');
-      allow update: if isAdmin() || staffHasPermission('manage_roles');
-      allow delete: if isAdmin();
+    // ── Roles ─────────────────────────────────────────────────────────────
+    match /roles/{id} {
+      allow read:   if isAdminOrStaff();
+      allow write:  if isAdmin();
     }
 
-    // ── Default deny ──────────────────────────────────────────────────────────
-    match /{document=**} {
-      allow read, write: if false;
+    // ── Deposit slips (referenced via Storage URL) ────────────────────────
+    match /deposit_slips/{id} {
+      allow read:   if isAuth() &&
+                       (resource.data.donor_id == uid()
+                        || isAdminOrStaff());
+      allow create: if isAuth();
+      allow delete: if isAdmin();
     }
   }
 }
